@@ -68,15 +68,25 @@ graph TD
 Ensure you are using the virtual environment containing the dependencies (`langchain`, `qdrant-client`, `langchain-ollama`).
 
 ```powershell
-# 1. Activate the virtual environment
+# 1. Create a venv
+python -m venv .venv
+
+# 2. Activate the virtual environment
 ..\..\.venv\Scripts\Activate.ps1
 
-# 2. Ingest (Index) the current directory codebase
+# 3. Install requirement file
+pip install requirements.txt
+
+# 4. Install frontend files
+cd termicursor-ui
+npm install
+
+# 5. Ingest (Index) the current directory codebase
 python main.py ingest .
 
-# 3. Ask a single-shot question
+# 6. Ask a single-shot question
 python main.py query . "Explain the validate_ollama_status function."
 
-# 4. Launch the interactive prompt session
+# 7. Launch the interactive prompt session
 python main.py chat .
 ```

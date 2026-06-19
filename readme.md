@@ -54,11 +54,11 @@ graph TD
 
 ##  Features
 
-*   ** Complete Privacy:** 100% offline. No code or metadata leaves your host machine.
-*   ** Syntax-Aware Parsing:** Code-aware chunking ensures logical components (functions, classes) are kept intact.
-*   ** Database Workspace Isolation:** Every project folder receives a unique path-hashed Qdrant collection to completely avoid data mix-ups.
-*   ** Proactive Checks:** Validates model availability and connectivity to prevent standard connection tracebacks.
-*   ** Windows Terminal Safe:** Integrated UTF-8 reconfiguration protects against command-line character rendering crashes.
+*   **Complete Privacy:** 100% offline. No code or metadata leaves your host machine.
+*   **Syntax-Aware Parsing:** Code-aware chunking ensures logical components (functions, classes) are kept intact.
+*   **Database Workspace Isolation:** Every project folder receives a unique path-hashed Qdrant collection to completely avoid data mix-ups.
+*   **Proactive Checks:** Validates model availability and connectivity to prevent standard connection tracebacks.
+*   **Windows Terminal Safe:** Integrated UTF-8 reconfiguration protects against command-line character rendering crashes.
 
 ---
 

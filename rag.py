@@ -22,13 +22,31 @@ from langchain_qdrant import QdrantVectorStore
 
 from langchain_classic.chains import RetrievalQA
 from langchain_classic.prompts import PromptTemplate
+from langchain_groq import ChatGroq
+from dotenv import load_dotenv
+from qdrant_client import QdrantClient
+
+load_dotenv()
 
 # Central database location on your PC
 QDRANT_PATH = "./local_qdrant" 
 
-EMBED_MODEL = "nomic-embed-text"
-LLM_MODEL = "qwen2.5-coder:3b"
-OLLAMA_URL = "http://localhost:11434"
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama").lower()
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+
+EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
+LLM_MODEL = os.getenv("OLLAMA_LLM_MODEL", "qwen2.5-coder:3b")
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
+
+def get_llm():
+    if LLM_PROVIDER == "groq":
+        if not GROQ_API_KEY:
+            print("❌ Error: GROQ_API_KEY is missing in .env file.")
+            sys.exit(1)
+        return ChatGroq(model=GROQ_MODEL, api_key=GROQ_API_KEY)
+    else:
+        return OllamaLLM(model=LLM_MODEL, base_url=OLLAMA_URL)
 
 def validate_ollama_status():
     print("⏳ Checking Ollama local service status...")
@@ -44,18 +62,18 @@ def validate_ollama_status():
         embed_found = any(EMBED_MODEL in m for m in models)
         llm_found = any(LLM_MODEL in m for m in models)
         
-        if not embed_found or not llm_found:
+        if not embed_found or (LLM_PROVIDER == "ollama" and not llm_found):
             print("\n⚠️ Missing required Ollama models:")
             if not embed_found:
                 print(f"   - Embedding model '{EMBED_MODEL}' is not pulled.")
                 print(f"     👉 Run: ollama pull {EMBED_MODEL}")
-            if not llm_found:
+            if LLM_PROVIDER == "ollama" and not llm_found:
                 print(f"   - LLM model '{LLM_MODEL}' is not pulled.")
                 print(f"     👉 Run: ollama pull {LLM_MODEL}")
             print("\nPlease pull the missing model(s) and try again.\n")
             return False
             
-        print("✅ Ollama is running and all models are available!")
+        print("✅ Ollama is running and required models are available!")
         return True
     except requests.exceptions.ConnectionError:
         print("\n❌ Error: Could not connect to Ollama.")
@@ -112,6 +130,15 @@ def ingest_codebase(project_path):
     if not os.path.exists(project_path):
         print("❌ Error: That path does not exist. Please check your spelling.")
         return {"status": "error", "message": f"Path '{project_path}' does not exist."}
+        
+    collection_name = get_collection_name(project_path)
+    client = QdrantClient(path=QDRANT_PATH)
+    collection_exists = client.collection_exists(collection_name)
+    client.close()
+    
+    if collection_exists:
+        print(f"✅ Embeddings for '{collection_name}' already exist. Skipping re-ingestion.")
+        return {"status": "success", "message": f"Existing embeddings loaded for {collection_name}.", "collection": collection_name}
 
     loader = GenericLoader.from_filesystem(
         project_path,
@@ -167,9 +194,6 @@ def ingest_codebase(project_path):
     print("🧠 Creating embeddings and saving to Qdrant (This might take a minute)...")
     embeddings = OllamaEmbeddings(model="nomic-embed-text")
     
-    # UPGRADE 3: Dynamic Collection Naming
-    collection_name = get_collection_name(project_path)
-    
     QdrantVectorStore.from_documents(
         texts,
         embeddings,
@@ -205,7 +229,7 @@ def chat_with_cursor(project_path):
         return
 
     retriever = qdrant.as_retriever(search_kwargs={"k": 3}) 
-    llm = OllamaLLM(model="qwen2.5-coder:3b")
+    llm = get_llm()
 
     prompt_template = """
     You are TermiCursor, an elite AI coding assistant.
@@ -284,7 +308,7 @@ def single_shot_query(project_path, query_text):
         return {"error": f"Could not find the brain for '{collection_name}'. Did you run ingest first?"}
 
     retriever = qdrant.as_retriever(search_kwargs={"k": 3}) 
-    llm = OllamaLLM(model="qwen2.5-coder:3b")
+    llm = get_llm()
 
     prompt_template = """
     You are TermiCursor, an elite AI coding assistant.
@@ -360,7 +384,16 @@ async def async_stream_query(project_path, query_text):
     # We use a lower level approach here to manually stream the LLM
     # since RetrievalQA doesn't stream tokens back intuitively without callbacks.
     docs = retriever.invoke(query_text)
-    context = "\\n\\n".join([doc.page_content for doc in docs])
+    
+    # Build context with source file paths included
+    context_parts = []
+    source_files = set()
+    for doc in docs:
+        source = doc.metadata.get("source", "unknown")
+        source_files.add(source)
+        context_parts.append(f"[File: {source}]\n{doc.page_content}")
+    context = "\\n\\n".join(context_parts)
+    file_list = "\\n".join(source_files)
     
     prompt_template = f"""You are TermiCursor, an elite AI coding assistant.
 Use the following pieces of retrieved codebase context to answer the user's question.
@@ -372,20 +405,25 @@ If the user explicitly asks you to create, write, or generate a file (e.g. "crea
 <file_contents>
 [/CREATE_FILE]
 
+Files found in the codebase:
+{file_list}
+
 Context: {context}
 
 Question: {query_text}
 
 Answer:"""
 
-    llm = OllamaLLM(model="qwen2.5-coder:3b")
+    llm = get_llm()
     
     # Yield tokens asynchronously
     full_response = ""
     try:
         async for chunk in llm.astream(prompt_template):
-            full_response += chunk
-            yield chunk
+            # Groq returns AIMessageChunk, Ollama might return str
+            content = chunk if isinstance(chunk, str) else chunk.content
+            full_response += content
+            yield content
             
         # After streaming, process any files that might have been requested
         created_files = check_and_create_file(full_response)

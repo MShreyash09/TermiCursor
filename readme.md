@@ -72,7 +72,7 @@ Ensure you are using the virtual environment containing the dependencies (`langc
 python -m venv .venv
 
 # 2. Activate the virtual environment
-..\..\.venv\Scripts\Activate.ps1
+.venv/scripts/activate.ps1
 
 # 3. Install requirement file
 pip install requirements.txt
@@ -87,7 +87,7 @@ npm run dev
 
 # Open another terminal and run 
 cd Cursor
-uvicorn main:app --reload
+uvicorn server:app --reload
 
 # 5. Ingest (Index) the current directory codebase
 python main.py ingest .
@@ -98,3 +98,6 @@ python main.py query . "Explain the validate_ollama_status function."
 # 7. Launch the interactive prompt session
 python main.py chat .
 ```
+<!-- 
+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 
+-->

@@ -9,3 +9,5 @@ langchain-text-splitters
 langchain-ollama
 langchain-qdrant
 qdrant-client
+python-dotenv
+langchain-groq

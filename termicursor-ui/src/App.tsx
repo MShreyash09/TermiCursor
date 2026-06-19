@@ -11,6 +11,7 @@ import SettingsPage from './components/SettingsPage';
 
 function App() {
   const [projectPath, setProjectPath] = useState('');
+  const [isIngesting, setIsIngesting] = useState(false);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [activeView, setActiveView] = useState('explorer');
@@ -39,6 +40,18 @@ if __name__ == "__main__":
         setSelectedFile(null);
         setFileContent(null);
         setActiveView('explorer');
+        setIsIngesting(true);
+        try {
+          await fetch('http://127.0.0.1:8000/ingest', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ project_path: folderPath }),
+          });
+        } catch (error) {
+          console.error("Failed to auto-ingest folder:", error);
+        } finally {
+          setIsIngesting(false);
+        }
       }
     }
   };
@@ -87,7 +100,7 @@ if __name__ == "__main__":
           <PanelResizeHandle className="w-1.5 bg-[#1a3a3a] hover:bg-[#3794ff] active:bg-[#3794ff] cursor-col-resize transition-colors" />
 
           <Panel defaultSize={250} minSize={150} maxSize={250} className="flex overflow-hidden">
-            <Sidebar projectPath={projectPath} />
+            <Sidebar projectPath={projectPath} isIngesting={isIngesting} />
           </Panel>
         </PanelGroup>
       </div>

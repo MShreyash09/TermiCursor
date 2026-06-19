@@ -9,9 +9,10 @@ interface Message {
 
 interface SidebarProps {
   projectPath: string;
+  isIngesting?: boolean;
 }
 
-export default function Sidebar({ projectPath }: SidebarProps) {
+export default function Sidebar({ projectPath, isIngesting }: SidebarProps) {
   const [messages, setMessages] = useState<Message[]>([
     { role: 'assistant', content: "Hello! I am Termicursor. How can I help you with your codebase today?" }
   ]);
@@ -60,7 +61,10 @@ export default function Sidebar({ projectPath }: SidebarProps) {
         const newMsgs = [...prev];
         const lastMsg = newMsgs[newMsgs.length - 1];
         if (lastMsg.role === 'assistant') {
-          lastMsg.content += data;
+          newMsgs[newMsgs.length - 1] = {
+            ...lastMsg,
+            content: lastMsg.content + data
+          };
         }
         return newMsgs;
       });
@@ -71,7 +75,10 @@ export default function Sidebar({ projectPath }: SidebarProps) {
       setMessages(prev => {
         const newMsgs = [...prev];
         const lastMsg = newMsgs[newMsgs.length - 1];
-        lastMsg.content += "\n[Error: Failed to connect to local brain. Make sure uvicorn server:app is running.]";
+        newMsgs[newMsgs.length - 1] = {
+          ...lastMsg,
+          content: lastMsg.content + "\n[Error: Failed to connect to local brain. Make sure uvicorn server:app is running.]"
+        };
         return newMsgs;
       });
     };
@@ -122,12 +129,20 @@ export default function Sidebar({ projectPath }: SidebarProps) {
             </div>
           </div>
         ))}
-        {isTyping && (
+        {isTyping && !isIngesting && (
           <div className="flex gap-3">
             <div className="w-6 h-6 rounded-md bg-gradient-to-br from-primary to-secondary flex items-center justify-center shrink-0 mt-1 shadow-lg shadow-primary/20">
               <Loader2 size={12} className="text-white animate-spin" />
             </div>
             <div className="text-sm text-gray-500 pt-1">Termicursor is thinking...</div>
+          </div>
+        )}
+        {isIngesting && (
+          <div className="flex gap-3">
+            <div className="w-6 h-6 rounded-md bg-gradient-to-br from-primary to-secondary flex items-center justify-center shrink-0 mt-1 shadow-lg shadow-primary/20">
+              <Loader2 size={12} className="text-white animate-spin" />
+            </div>
+            <div className="text-sm text-gray-500 pt-1">Ingesting codebase into brain. This might take a minute...</div>
           </div>
         )}
       </div>
@@ -139,18 +154,19 @@ export default function Sidebar({ projectPath }: SidebarProps) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
+              if (e.key === 'Enter' && !e.shiftKey && !isIngesting) {
                 e.preventDefault();
                 handleSend();
               }
             }}
             placeholder="Ask anything..."
+            disabled={isIngesting}
             className="w-full bg-transparent pl-4 pr-10 py-3 text-sm resize-none focus:outline-none text-gray-200 placeholder-gray-500 custom-scrollbar"
             rows={2}
           />
           <button
             onClick={handleSend}
-            disabled={!input.trim() || isTyping}
+            disabled={!input.trim() || isTyping || isIngesting}
             className="absolute right-2 bottom-2 p-1.5 text-gray-400 hover:text-gray-200 disabled:opacity-50 transition-colors"
           >
             <Send size={16} />

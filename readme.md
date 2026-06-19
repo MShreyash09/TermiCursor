@@ -81,6 +81,14 @@ pip install requirements.txt
 cd termicursor-ui
 npm install
 
+# 5. Open 2 terminal and navigate one to backend & frontend
+cd termicursor-ui
+npm run dev
+
+# Open another terminal and run 
+cd Cursor
+uvicorn main:app --reload
+
 # 5. Ingest (Index) the current directory codebase
 python main.py ingest .
 

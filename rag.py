@@ -92,11 +92,18 @@ def get_collection_name(project_path):
         clean_name = "default_codebase"
     return f"{clean_name}_{path_hash}"
 
-def check_and_create_file(response_text):
-    file_pattern = r"\[CREATE_FILE:\s*([a-zA-Z0-9_\-\.\/]+)\](.*?)\[/CREATE_FILE\]"
+def check_and_create_file(response_text, project_path):
+    file_pattern = r"\[CREATE_FILE:\s*([a-zA-Z0-9_\-\.\/\\]+)\](.*?)\[/CREATE_FILE\]"
     # Find all matches in case there are multiple
     matches = re.findall(file_pattern, response_text, re.DOTALL)
     created_files = []
+    
+    if not project_path:
+        print("\n❌ [System] No project path set — cannot create files.")
+        return created_files
+    
+    # Normalize the project path for consistent comparison
+    norm_project = os.path.normpath(os.path.abspath(project_path))
     
     for filename, content in matches:
         filename = filename.strip()
@@ -106,15 +113,28 @@ def check_and_create_file(response_text):
         content = re.sub(r"^```[a-zA-Z0-9]*\n", "", content)
         content = re.sub(r"\n```$", "", content)
         
+        # Resolve to absolute path under the project directory
+        abs_path = os.path.normpath(os.path.join(norm_project, filename))
+        
+        # Safety: ensure the resolved path is still within the project
+        if not abs_path.startswith(norm_project):
+            print(f"\n❌ [System] Refused to write '{filename}': path escapes project directory.")
+            continue
+        
         try:
-            parent_dir = os.path.dirname(filename)
+            parent_dir = os.path.dirname(abs_path)
             if parent_dir and not os.path.exists(parent_dir):
                 os.makedirs(parent_dir, exist_ok=True)
                 
-            with open(filename, "w", encoding="utf-8") as f:
+            with open(abs_path, "w", encoding="utf-8") as f:
                 f.write(content)
-            print(f"\n💾 [System] File '{filename}' created and written successfully!")
-            created_files.append(filename)
+            
+            # Verify the file was actually created
+            if os.path.exists(abs_path):
+                print(f"\n💾 [System] File '{filename}' created at: {abs_path}")
+                created_files.append(filename)
+            else:
+                print(f"\n❌ [System] File '{filename}' write reported success but file not found at: {abs_path}")
         except Exception as e:
             print(f"\n❌ [System] Failed to write file '{filename}': {e}")
             
@@ -283,7 +303,7 @@ def chat_with_cursor(project_path):
             print("\n" + "-"*40 + "\n")
             
             # Check for file creation tags and execute
-            check_and_create_file(result_text)
+            check_and_create_file(result_text, project_path)
 
             
         except KeyboardInterrupt:
@@ -351,7 +371,7 @@ def single_shot_query(project_path, query_text):
         print("\n" + result_text)
         
         # Check for file creation tags and execute
-        created_files = check_and_create_file(result_text)
+        created_files = check_and_create_file(result_text, project_path)
         return {"answer": result_text, "files_created": created_files}
     except Exception as e:
         print(f"❌ Error executing query: {e}")
@@ -426,9 +446,14 @@ Answer:"""
             yield content
             
         # After streaming, process any files that might have been requested
-        created_files = check_and_create_file(full_response)
+        import json as _json
+        created_files = check_and_create_file(full_response, project_path)
         if created_files:
-            yield f"\\n\\n[System: Successfully created {len(created_files)} files: {', '.join(created_files)}]"
+            yield _json.dumps({
+                "type": "files_created",
+                "files": created_files,
+                "project_path": project_path
+            })
     except Exception as e:
         yield f"\\nError during generation: {e}"
 

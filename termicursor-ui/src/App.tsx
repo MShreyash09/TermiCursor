@@ -15,6 +15,7 @@ function App() {
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [activeView, setActiveView] = useState('explorer');
+  const [fileTreeRefreshKey, setFileTreeRefreshKey] = useState(0);
   const dummyCode = `import os
 import sys
 from langchain_ollama import OllamaEmbeddings
@@ -90,6 +91,7 @@ if __name__ == "__main__":
                 }
               }}
               onOpenFolder={handleOpenFolder}
+              refreshKey={fileTreeRefreshKey}
             />
           </Panel>
           <PanelResizeHandle className="w-1.5 bg-[#1a3a3a] hover:bg-[#3794ff] active:bg-[#3794ff] cursor-col-resize transition-colors" />
@@ -100,7 +102,13 @@ if __name__ == "__main__":
           <PanelResizeHandle className="w-1.5 bg-[#1a3a3a] hover:bg-[#3794ff] active:bg-[#3794ff] cursor-col-resize transition-colors" />
 
           <Panel defaultSize={250} minSize={150} maxSize={250} className="flex overflow-hidden">
-            <Sidebar projectPath={projectPath} isIngesting={isIngesting} />
+            <Sidebar
+              projectPath={projectPath}
+              isIngesting={isIngesting}
+              onFilesCreated={(files) => {
+                setFileTreeRefreshKey(prev => prev + 1);
+              }}
+            />
           </Panel>
         </PanelGroup>
       </div>

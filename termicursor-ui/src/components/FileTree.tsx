@@ -11,6 +11,7 @@ interface FileTreeProps {
   projectPath: string;
   onSelectFile: (path: string, name: string) => void;
   onOpenFolder?: () => void;
+  refreshKey?: number;
 }
 
 function FolderNode({ node, onSelectFile, depth }: { node: FileNode, onSelectFile: (path: string, name: string) => void, depth: number }) {
@@ -85,7 +86,7 @@ function FileNodeItem({ node, onSelectFile, depth }: { node: FileNode, onSelectF
   );
 }
 
-export default function FileTree({ projectPath, onSelectFile, onOpenFolder }: FileTreeProps) {
+export default function FileTree({ projectPath, onSelectFile, onOpenFolder, refreshKey }: FileTreeProps) {
   const [entries, setEntries] = useState<FileNode[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -116,7 +117,7 @@ export default function FileTree({ projectPath, onSelectFile, onOpenFolder }: Fi
       }
     }
     loadRoot();
-  }, [projectPath]);
+  }, [projectPath, refreshKey]);
 
   return (
     <div className="w-full h-full bg-[#1e1e1e] border-r border-[#2a2a2a] flex flex-col pt-10 z-30 shadow-md">

@@ -10,9 +10,10 @@ interface Message {
 interface SidebarProps {
   projectPath: string;
   isIngesting?: boolean;
+  onFilesCreated?: (files: string[]) => void;
 }
 
-export default function Sidebar({ projectPath, isIngesting }: SidebarProps) {
+export default function Sidebar({ projectPath, isIngesting, onFilesCreated }: SidebarProps) {
   const [messages, setMessages] = useState<Message[]>([
     { role: 'assistant', content: "Hello! I am Termicursor. How can I help you with your codebase today?" }
   ]);
@@ -55,6 +56,30 @@ export default function Sidebar({ projectPath, isIngesting }: SidebarProps) {
         ws.close();
         setIsTyping(false);
         return;
+      }
+
+      // Check for structured file-creation event from backend
+      try {
+        const parsed = JSON.parse(data);
+        if (parsed.type === 'files_created' && Array.isArray(parsed.files)) {
+          // Notify parent so the file tree refreshes
+          onFilesCreated?.(parsed.files);
+          // Append a user-friendly confirmation to the chat
+          setMessages(prev => {
+            const newMsgs = [...prev];
+            const lastMsg = newMsgs[newMsgs.length - 1];
+            if (lastMsg.role === 'assistant') {
+              newMsgs[newMsgs.length - 1] = {
+                ...lastMsg,
+                content: lastMsg.content + `\n\n✅ **Created files:** ${parsed.files.join(', ')}`
+              };
+            }
+            return newMsgs;
+          });
+          return;
+        }
+      } catch {
+        // Not JSON — treat as a normal streaming text chunk
       }
 
       setMessages(prev => {

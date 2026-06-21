@@ -146,15 +146,15 @@ export default function FileTree({ projectPath, onSelectFile, onOpenFolder, refr
                   Open Folder
                 </button>
               </div>
-              <div>
+              {/* <div>
                 <p className="mb-2">You can clone a repository locally.</p>
                 <button 
                   className="w-full py-1.5 bg-[#1e4b4a] hover:bg-[#255c5a] text-white rounded transition-colors"
                 >
                   Clone Repository
                 </button>
-              </div>
-              <p className="text-gray-400">
+              </div> */}
+              {/* <p className="text-gray-400">
                 To learn more about how to use Git and source control in the IDE <a href="#" className="text-blue-400 hover:underline">read our docs</a>.
               </p>
               <div>
@@ -166,7 +166,7 @@ export default function FileTree({ projectPath, onSelectFile, onOpenFolder, refr
                 >
                   Create Java Project
                 </button>
-              </div>
+              </div> */}
             </div>
           </div>
         ) : (

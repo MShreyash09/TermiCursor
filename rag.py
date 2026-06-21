@@ -30,6 +30,7 @@ load_dotenv()
 
 # Central database location on your PC
 QDRANT_PATH = "./local_qdrant" 
+MEM0_QDRANT_PATH = "./local_mem0_qdrant"  # Separate storage for user memories
 
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama").lower()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
@@ -38,6 +39,57 @@ GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
 LLM_MODEL = os.getenv("OLLAMA_LLM_MODEL", "qwen2.5-coder:3b")
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
+
+# ── Mem0 Memory Initialization ──
+try:
+    from mem0 import Memory
+
+    mem0_config = {
+        "vector_store": {
+            "provider": "qdrant",
+            "config": {
+                "collection_name": "termicursor_user_memories",
+                "path": MEM0_QDRANT_PATH,
+                "on_disk": True,
+            },
+        },
+        "embedder": {
+            "provider": "ollama",
+            "config": {
+                "model": EMBED_MODEL,
+                "ollama_base_url": OLLAMA_URL,
+            },
+        },
+    }
+
+    # Use the same LLM provider the user configured for the main chat
+    if LLM_PROVIDER == "groq" and GROQ_API_KEY:
+        mem0_config["llm"] = {
+            "provider": "groq",
+            "config": {
+                "model": GROQ_MODEL,
+                "api_key": GROQ_API_KEY,
+                "temperature": 0,
+                "max_tokens": 2000,
+            },
+        }
+    else:
+        mem0_config["llm"] = {
+            "provider": "ollama",
+            "config": {
+                "model": LLM_MODEL,
+                "ollama_base_url": OLLAMA_URL,
+                "temperature": 0,
+                "max_tokens": 2000,
+            },
+        }
+
+    user_memory = Memory.from_config(mem0_config)
+    print("🧠 Mem0 memory layer initialized successfully!")
+except Exception as e:
+    print(f"⚠️ Mem0 memory layer could not be initialized: {e}")
+    print("   Memory features will be disabled. Install with: pip install mem0ai")
+    user_memory = None
 
 def get_llm():
     if LLM_PROVIDER == "groq":
@@ -91,6 +143,38 @@ def get_collection_name(project_path):
     if not clean_name:
         clean_name = "default_codebase"
     return f"{clean_name}_{path_hash}"
+
+
+def get_memory_context(query, user_id="default_user", limit=5):
+    """Retrieve relevant past memories for the current query."""
+    if user_memory is None:
+        return ""
+    try:
+        memories = user_memory.search(query, user_id=user_id, limit=limit)
+        if not memories or not memories.get("results"):
+            return "No relevant memories found."
+        memory_lines = []
+        for m in memories["results"]:
+            memory_text = m.get("memory", "")
+            if memory_text:
+                memory_lines.append(f"- {memory_text}")
+        return "\n".join(memory_lines) if memory_lines else "No relevant memories found."
+    except Exception as e:
+        print(f"⚠️ Memory search failed: {e}")
+        return "Memory search unavailable."
+
+
+def save_to_memory(user_input, assistant_response, user_id="default_user"):
+    """Save conversation interaction to long-term memory."""
+    if user_memory is None:
+        return
+    try:
+        user_memory.add(
+            f"User asked: {user_input}\nAssistant answered: {assistant_response}",
+            user_id=user_id
+        )
+    except Exception as e:
+        print(f"⚠️ Failed to save to memory: {e}")
 
 def check_and_create_file(response_text, project_path):
     file_pattern = r"\[CREATE_FILE:\s*([a-zA-Z0-9_\-\.\/\\]+)\](.*?)\[/CREATE_FILE\]"
@@ -253,7 +337,7 @@ def chat_with_cursor(project_path):
 
     prompt_template = """
     You are TermiCursor, an elite AI coding assistant.
-    Use the following pieces of retrieved codebase context to answer the user's question.
+    Use the following pieces of retrieved codebase context and your memory of past interactions to answer the user's question.
     If you don't know the answer or the context doesn't have it, say that you don't know.
     Write clean, efficient code. And handle simple small talk like reply hello I am
     TermiCursor when asked and thankyou for using TermiCursor when user say bye and stop the terminal chat.
@@ -271,13 +355,16 @@ def chat_with_cursor(project_path):
     print("Hello, World!")
     [/CREATE_FILE]
 
-    Context: {context}
+    Relevant Memory from Past Conversations:
+    {memories}
+
+    Codebase Context: {context}
     
     Question: {question}
     
     Answer:"""
     
-    PROMPT = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
+    PROMPT = PromptTemplate(template=prompt_template, input_variables=["context", "question", "memories"])
 
     qa_chain = RetrievalQA.from_chain_type(
         llm=llm,
@@ -295,12 +382,18 @@ def chat_with_cursor(project_path):
                 break
             if not user_input.strip():
                 continue
-                
+            
+            # Retrieve relevant memories
+            memory_context = get_memory_context(user_input)
+            
             print("🤖 TermiCursor is thinking...")
-            response = qa_chain.invoke({"query": user_input})
+            response = qa_chain.invoke({"query": user_input, "memories": memory_context})
             result_text = response["result"]
             print("\n" + result_text)
             print("\n" + "-"*40 + "\n")
+            
+            # Save interaction to long-term memory
+            save_to_memory(user_input, result_text)
             
             # Check for file creation tags and execute
             check_and_create_file(result_text, project_path)
@@ -332,7 +425,7 @@ def single_shot_query(project_path, query_text):
 
     prompt_template = """
     You are TermiCursor, an elite AI coding assistant.
-    Use the following pieces of retrieved codebase context to answer the user's question.
+    Use the following pieces of retrieved codebase context and your memory of past interactions to answer the user's question.
     If you don't know the answer or the context doesn't have it, say that you don't know.
     Write clean, efficient code.
 
@@ -349,13 +442,16 @@ def single_shot_query(project_path, query_text):
     print("Hello, World!")
     [/CREATE_FILE]
 
-    Context: {context}
+    Relevant Memory from Past Conversations:
+    {memories}
+
+    Codebase Context: {context}
     
     Question: {question}
     
     Answer:"""
     
-    PROMPT = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
+    PROMPT = PromptTemplate(template=prompt_template, input_variables=["context", "question", "memories"])
 
     qa_chain = RetrievalQA.from_chain_type(
         llm=llm,
@@ -364,11 +460,17 @@ def single_shot_query(project_path, query_text):
         chain_type_kwargs={"prompt": PROMPT}
     )
 
+    # Retrieve relevant memories
+    memory_context = get_memory_context(query_text)
+
     print("🤖 TermiCursor is thinking...")
     try:
-        response = qa_chain.invoke({"query": query_text})
+        response = qa_chain.invoke({"query": query_text, "memories": memory_context})
         result_text = response["result"]
         print("\n" + result_text)
+        
+        # Save interaction to long-term memory
+        save_to_memory(query_text, result_text)
         
         # Check for file creation tags and execute
         created_files = check_and_create_file(result_text, project_path)
@@ -415,8 +517,11 @@ async def async_stream_query(project_path, query_text):
     context = "\\n\\n".join(context_parts)
     file_list = "\\n".join(source_files)
     
+    # Retrieve relevant memories for this query
+    memory_context = get_memory_context(query_text)
+
     prompt_template = f"""You are TermiCursor, an elite AI coding assistant.
-Use the following pieces of retrieved codebase context to answer the user's question.
+Use the following pieces of retrieved codebase context and your memory of past interactions to answer the user's question.
 If you don't know the answer or the context doesn't have it, say that you don't know.
 Write clean, efficient code.
 
@@ -424,6 +529,9 @@ If the user explicitly asks you to create, write, or generate a file (e.g. "crea
 [CREATE_FILE: <filename>]
 <file_contents>
 [/CREATE_FILE]
+
+Relevant Memory from Past Conversations:
+{memory_context}
 
 Files found in the codebase:
 {file_list}
@@ -444,6 +552,9 @@ Answer:"""
             content = chunk if isinstance(chunk, str) else chunk.content
             full_response += content
             yield content
+            
+        # Save interaction to long-term memory
+        save_to_memory(query_text, full_response)
             
         # After streaming, process any files that might have been requested
         import json as _json

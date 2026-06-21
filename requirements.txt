@@ -11,3 +11,4 @@ langchain-qdrant
 qdrant-client
 python-dotenv
 langchain-groq
+mem0ai

@@ -31,7 +31,7 @@ export default function WelcomeScreen({ onOpenFolder }: WelcomeScreenProps) {
       <div className="w-full max-w-md px-4">
         <h3 className="text-sm font-semibold text-gray-300 mb-4 tracking-wide">Workspaces</h3>
         <div className="flex flex-col gap-2">
-          {['GenAI', 'final portfolio', 'hackathon research'].map((ws, i) => (
+          {['TermiCursor', 'GenAI', 'React'].map((ws, i) => (
             <div key={i} className="p-3 bg-[#052122] border border-[#0f3435] hover:bg-[#0a2c2d] rounded cursor-pointer transition-colors group">
               <div className="text-gray-200 font-medium group-hover:text-blue-400 transition-colors">{ws}</div>
               <div className="text-xs text-gray-500 truncate">C:\Users\shrey\OneDrive\Desktop</div>

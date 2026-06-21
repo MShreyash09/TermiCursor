@@ -9,9 +9,9 @@ export default function ActivityBar({ activeView = 'explorer', onViewChange }: A
   const topItems = [
     { id: 'explorer', icon: Files },
     { id: 'search', icon: Search },
-    { id: 'git', icon: GitBranch },
-    { id: 'run', icon: Play },
-    { id: 'extensions', icon: Blocks },
+    // { id: 'git', icon: GitBranch },
+    // { id: 'run', icon: Play },
+    // { id: 'extensions', icon: Blocks },
   ];
 
   const bottomItems = [

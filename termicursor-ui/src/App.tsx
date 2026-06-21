@@ -101,7 +101,7 @@ if __name__ == "__main__":
           </Panel>
           <PanelResizeHandle className="w-1.5 bg-[#1a3a3a] hover:bg-[#3794ff] active:bg-[#3794ff] cursor-col-resize transition-colors" />
 
-          <Panel defaultSize={250} minSize={150} maxSize={250} className="flex overflow-hidden">
+          <Panel defaultSize={700} minSize={200} maxSize={700} className="flex overflow-hidden">
             <Sidebar
               projectPath={projectPath}
               isIngesting={isIngesting}

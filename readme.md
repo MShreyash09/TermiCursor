@@ -1,6 +1,6 @@
 # TermiCursor - Local, Offline Codebase AI Assistant
 
-TermiCursor is an fully offline, command-line AI assistant designed to run Retrieval-Augmented Generation (RAG) over local codebases using local models. It guarantees complete privacy by processing all code files, embeddings, and inference locally on your PC.
+TermiCursor is an fully offline, GUI based AI assistant designed to run Retrieval-Augmented Generation (RAG) over local codebases using local models. It guarantees complete privacy by processing all code files, embeddings, and inference locally on your PC.
 
 ---
 

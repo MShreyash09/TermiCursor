@@ -7,7 +7,29 @@
   "scripts": {
     "dev": "concurrently \"vite\" \"wait-on tcp:5173 && electron .\"",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "package": "npm run build && electron-builder --win"
+  },
+  "build": {
+    "appId": "com.termicursor.app",
+    "productName": "Termicursor",
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": ["nsis"]
+    },
+    "extraResources": [
+      {
+        "from": "../dist/termicursor-backend",
+        "to": "termicursor-backend",
+        "filter": ["**/*"]
+      }
+    ],
+    "files": [
+      "dist/**/*",
+      "electron/**/*"
+    ]
   },
   "devDependencies": {
     "@types/react": "^19.2.17",

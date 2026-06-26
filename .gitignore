@@ -1,3 +1,10 @@
 __pycache__/
 local_qdrant
 local_mem0_qdrant
+dist/
+build/
+venv/
+.venv/
+termicursor-ui/dist/
+termicursor-ui/release/
+termicursor-ui/node_modules/

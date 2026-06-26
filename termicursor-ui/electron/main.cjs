@@ -1,6 +1,25 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
+const { spawn } = require('child_process');
+
+let pythonProcess = null;
+
+function startPythonBackend() {
+  const isDev = !app.isPackaged;
+  if (!isDev) {
+    const backendPath = path.join(process.resourcesPath, 'termicursor-backend', 'termicursor-backend.exe');
+    console.log("Starting Python backend at:", backendPath);
+    try {
+      pythonProcess = spawn(backendPath, [], { detached: false });
+      
+      pythonProcess.stdout.on('data', (data) => console.log(`Python STDOUT: ${data}`));
+      pythonProcess.stderr.on('data', (data) => console.error(`Python STDERR: ${data}`));
+    } catch(err) {
+      console.error("Failed to start python backend:", err);
+    }
+  }
+}
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -73,6 +92,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  startPythonBackend();
   createWindow();
 
   app.on('activate', () => {
@@ -85,5 +105,11 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
+  }
+});
+
+app.on('will-quit', () => {
+  if (pythonProcess) {
+    pythonProcess.kill();
   }
 });

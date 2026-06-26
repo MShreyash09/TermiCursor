@@ -105,7 +105,7 @@ if __name__ == "__main__":
             <Sidebar
               projectPath={projectPath}
               isIngesting={isIngesting}
-              onFilesCreated={(files) => {
+              onFilesCreated={() => {
                 setFileTreeRefreshKey(prev => prev + 1);
               }}
             />

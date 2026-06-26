@@ -66,4 +66,12 @@ async def websocket_chat(websocket: WebSocket):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("server:app", host="127.0.0.1", port=8000, reload=True)
+    import sys
+
+    # Check if running in a PyInstaller frozen executable
+    if getattr(sys, 'frozen', False):
+        # When frozen, run the app object directly without reload
+        uvicorn.run(app, host="127.0.0.1", port=8000)
+    else:
+        # Development mode
+        uvicorn.run("server:app", host="127.0.0.1", port=8000, reload=True)

@@ -1,4 +1,4 @@
-import { Files, Search, GitBranch, Play, Blocks, Settings, User } from 'lucide-react';
+import { Files, Search, Settings, User } from 'lucide-react';
 
 interface ActivityBarProps {
   activeView?: string;

@@ -47,3 +47,12 @@
 .no-drag {
   -webkit-app-region: no-drag;
 }
+
+/* Hide scrollbar for tabs */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

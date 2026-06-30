@@ -12,8 +12,8 @@ import SettingsPage from './components/SettingsPage';
 function App() {
   const [projectPath, setProjectPath] = useState('');
   const [isIngesting, setIsIngesting] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  const [fileContent, setFileContent] = useState<string | null>(null);
+  const [openFiles, setOpenFiles] = useState<{path: string, name: string, content: string}[]>([]);
+  const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
   const [activeView, setActiveView] = useState('explorer');
   const [fileTreeRefreshKey, setFileTreeRefreshKey] = useState(0);
   const dummyCode = `import os
@@ -38,8 +38,8 @@ if __name__ == "__main__":
       const folderPath = await window.electronAPI.openFolder();
       if (folderPath) {
         setProjectPath(folderPath);
-        setSelectedFile(null);
-        setFileContent(null);
+        setOpenFiles([]);
+        setActiveFilePath(null);
         setActiveView('explorer');
         setIsIngesting(true);
         try {
@@ -61,12 +61,23 @@ if __name__ == "__main__":
   const renderCenterContent = () => {
     if (activeView === 'profile') return <ProfilePage />;
     if (activeView === 'settings') return <SettingsPage />;
-    if (!projectPath || !selectedFile) return <WelcomeScreen onOpenFolder={handleOpenFolder} />;
+    if (!projectPath || openFiles.length === 0) return <WelcomeScreen onOpenFolder={handleOpenFolder} />;
     return (
       <EditorView
-        content={fileContent !== null ? fileContent : dummyCode}
-        language={selectedFile.endsWith('.tsx') || selectedFile.endsWith('.ts') ? 'typescript' : selectedFile.endsWith('.js') || selectedFile.endsWith('.jsx') ? 'javascript' : selectedFile.endsWith('.py') ? 'python' : selectedFile.endsWith('.json') ? 'json' : selectedFile.endsWith('.html') ? 'html' : 'plaintext'}
-        fileName={selectedFile}
+        openFiles={openFiles}
+        activeFilePath={activeFilePath}
+        onSelectFile={setActiveFilePath}
+        onCloseFile={(path) => {
+          setOpenFiles(prev => {
+            const newFiles = prev.filter(f => f.path !== path);
+            if (activeFilePath === path) {
+              const newActive = newFiles.length > 0 ? newFiles[newFiles.length - 1].path : null;
+              setActiveFilePath(newActive);
+            }
+            return newFiles;
+          });
+        }}
+        dummyCode={dummyCode}
       />
     );
   };
@@ -81,13 +92,21 @@ if __name__ == "__main__":
             <FileTree
               projectPath={projectPath}
               onSelectFile={async (filePath, fileName) => {
-                setSelectedFile(fileName);
                 setActiveView('explorer');
+                const isAlreadyOpen = openFiles.some(f => f.path === filePath);
+                if (isAlreadyOpen) {
+                  setActiveFilePath(filePath);
+                  return;
+                }
                 // @ts-ignore
                 if (window.electronAPI && window.electronAPI.readFile) {
                   // @ts-ignore
                   const content = await window.electronAPI.readFile(filePath);
-                  setFileContent(content);
+                  setOpenFiles(prev => {
+                    if (prev.some(f => f.path === filePath)) return prev;
+                    return [...prev, { path: filePath, name: fileName, content }];
+                  });
+                  setActiveFilePath(filePath);
                 }
               }}
               onOpenFolder={handleOpenFolder}

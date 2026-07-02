@@ -2,16 +2,36 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
 const { spawn } = require('child_process');
+const net = require('net');
 
 let pythonProcess = null;
+let backendPort = 8000;
 
-function startPythonBackend() {
+function findOpenPort() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.unref();
+    server.on('error', reject);
+    server.listen(0, () => {
+      const port = server.address().port;
+      server.close(() => resolve(port));
+    });
+  });
+}
+
+async function startPythonBackend() {
   const isDev = !app.isPackaged;
   if (!isDev) {
     const backendPath = path.join(process.resourcesPath, 'termicursor-backend', 'termicursor-backend.exe');
     console.log("Starting Python backend at:", backendPath);
     try {
-      pythonProcess = spawn(backendPath, [], { detached: false });
+      backendPort = await findOpenPort();
+      console.log("Found open port:", backendPort);
+      
+      const userDataPath = app.getPath('userData');
+      const env = { ...process.env, TERMICURSOR_USER_DATA: userDataPath };
+      
+      pythonProcess = spawn(backendPath, ["--port", backendPort.toString()], { detached: false, env });
       
       pythonProcess.stdout.on('data', (data) => console.log(`Python STDOUT: ${data}`));
       pythonProcess.stderr.on('data', (data) => console.error(`Python STDERR: ${data}`));
@@ -80,6 +100,29 @@ function createWindow() {
     }
   });
 
+  ipcMain.handle('getBackendPort', () => backendPort);
+
+  ipcMain.handle('dialog:saveSettings', async (event, settings) => {
+    try {
+      const settingsPath = path.join(app.getPath('userData'), 'settings.json');
+      await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+      return true;
+    } catch (e) {
+      console.error("Failed to save settings:", e);
+      return false;
+    }
+  });
+
+  ipcMain.handle('dialog:loadSettings', async () => {
+    try {
+      const settingsPath = path.join(app.getPath('userData'), 'settings.json');
+      const data = await fs.readFile(settingsPath, 'utf-8');
+      return JSON.parse(data);
+    } catch (e) {
+      return {};
+    }
+  });
+
   // ── Load content ──
   const isDev = !app.isPackaged;
 
@@ -91,8 +134,8 @@ function createWindow() {
   }
 }
 
-app.whenReady().then(() => {
-  startPythonBackend();
+app.whenReady().then(async () => {
+  await startPythonBackend();
   createWindow();
 
   app.on('activate', () => {

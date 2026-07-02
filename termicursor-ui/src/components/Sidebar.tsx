@@ -8,12 +8,13 @@ interface Message {
 }
 
 interface SidebarProps {
+  backendPort?: number;
   projectPath: string;
   isIngesting?: boolean;
   onFilesCreated?: (files: string[]) => void;
 }
 
-export default function Sidebar({ projectPath, isIngesting, onFilesCreated }: SidebarProps) {
+export default function Sidebar({ projectPath, isIngesting, onFilesCreated, backendPort = 8000 }: SidebarProps) {
   const [messages, setMessages] = useState<Message[]>([
     { role: 'assistant', content: "Hello! I am Termicursor. How can I help you with your codebase today?" }
   ]);
@@ -32,6 +33,15 @@ export default function Sidebar({ projectPath, isIngesting, onFilesCreated }: Si
   const handleSend = () => {
     if (!input.trim()) return;
 
+    if (!projectPath) {
+      setMessages(prev => [...prev, 
+        { role: 'user', content: input },
+        { role: 'assistant', content: '⚠️ No project folder is open. Please open a folder first so I can ingest and analyze the codebase.' }
+      ]);
+      setInput('');
+      return;
+    }
+
     const userMsg = input;
     setInput('');
     setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
@@ -39,7 +49,7 @@ export default function Sidebar({ projectPath, isIngesting, onFilesCreated }: Si
     setIsTyping(true);
     setMessages(prev => [...prev, { role: 'assistant', content: '' }]); // placeholder
 
-    const ws = new WebSocket('ws://127.0.0.1:8000/ws/chat');
+    const ws = new WebSocket(`ws://127.0.0.1:${backendPort}/ws/chat`);
     wsRef.current = ws;
 
     ws.onopen = () => {

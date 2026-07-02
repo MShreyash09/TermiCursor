@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Palette, Type, Terminal, Cpu } from 'lucide-react';
 
 interface SettingItemProps {
@@ -59,10 +59,40 @@ export default function SettingsPage() {
     ollamaModel: 'llama3.2',
     ollamaUrl: 'http://localhost:11434',
     autoIngest: false,
+    llmProvider: 'ollama',
+    groqApiKey: '',
+    groqModel: 'llama-3.1-8b-instant',
   });
 
+  
+  useEffect(() => {
+    // @ts-ignore
+    if (window.electronAPI && window.electronAPI.loadSettings) {
+      // @ts-ignore
+      window.electronAPI.loadSettings().then(loaded => {
+        if (loaded && Object.keys(loaded).length > 0) {
+          setSettings(prev => ({ ...prev, ...loaded }));
+        }
+      });
+    }
+  }, []);
+
+  const saveToBackend = async (newSettings: any) => {
+    // @ts-ignore
+    if (window.electronAPI && window.electronAPI.saveSettings) {
+      // @ts-ignore
+      await window.electronAPI.saveSettings(newSettings);
+      alert("Settings saved! Restarting backend is recommended if changing LLM provider.");
+    }
+  };
+
   const updateSetting = (key: string, value: string | boolean) => {
-    setSettings(prev => ({ ...prev, [key]: value }));
+
+    setSettings(prev => {
+      const next = { ...prev, [key]: value };
+      saveToBackend(next);
+      return next;
+    });
   };
 
   const sections = [
@@ -139,9 +169,38 @@ export default function SettingsPage() {
       icon: Cpu,
       items: [
         {
+          label: 'LLM Provider',
+          description: 'Choose between local Ollama or cloud Groq',
+          control: <Dropdown value={settings.llmProvider} options={['ollama', 'groq']} onChange={(v) => updateSetting('llmProvider', v)} />,
+        },
+        {
+          label: 'Groq API Key',
+          description: 'Required if using Groq provider',
+          control: (
+            <input
+              type="password"
+              value={settings.groqApiKey || ''}
+              onChange={(e) => updateSetting('groqApiKey', e.target.value)}
+              className="bg-[#0b2b2d] border border-[#1a4042] rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-[#2b6b69] w-52"
+            />
+          ),
+        },
+        {
+          label: 'Groq Model',
+          description: 'Model to use on Groq',
+          control: <Dropdown value={settings.groqModel || 'llama-3.1-8b-instant'} options={['llama-3.1-8b-instant', 'llama3-70b-8192', 'mixtral-8x7b-32768']} onChange={(v) => updateSetting('groqModel', v)} />,
+        },
+        {
           label: 'Ollama Model',
-          description: 'The Ollama model used for code assistance',
-          control: <Dropdown value={settings.ollamaModel} options={['llama3.2', 'codellama', 'mistral', 'deepseek-coder']} onChange={(v) => updateSetting('ollamaModel', v)} />,
+          description: 'The Ollama model used for code assistance (e.g. qwen:1.8b or qwen2.5-coder:1.5b)',
+          control: (
+            <input
+              type="text"
+              value={settings.ollamaModel || ''}
+              onChange={(e) => updateSetting('ollamaModel', e.target.value)}
+              className="bg-[#0b2b2d] border border-[#1a4042] rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-[#2b6b69] w-52"
+            />
+          ),
         },
         {
           label: 'Ollama Server URL',

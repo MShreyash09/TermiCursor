@@ -7,4 +7,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openFolder: () => ipcRenderer.invoke('dialog:openFolder'),
   readDir: (dirPath) => ipcRenderer.invoke('dialog:readDir', dirPath),
   readFile: (filePath) => ipcRenderer.invoke('dialog:readFile', filePath),
+  saveSettings: (settings) => ipcRenderer.invoke('dialog:saveSettings', settings),
+  loadSettings: () => ipcRenderer.invoke('dialog:loadSettings'),
+  getBackendPort: () => ipcRenderer.invoke('getBackendPort'),
 });

@@ -3,6 +3,8 @@ import sys
 import re
 import hashlib
 import requests
+import json
+import appdirs
 
 # Ensure stdout/stderr supports UTF-8 on Windows
 if sys.platform.startswith('win'):
@@ -28,17 +30,35 @@ from qdrant_client import QdrantClient
 
 load_dotenv()
 
-# Central database location on your PC
-QDRANT_PATH = "./local_qdrant" 
-MEM0_QDRANT_PATH = "./local_mem0_qdrant"  # Separate storage for user memories
+# AppData location for packaged apps
+APP_DATA_DIR = os.getenv("TERMICURSOR_USER_DATA")
+if not APP_DATA_DIR:
+    APP_DATA_DIR = appdirs.user_data_dir("Termicursor", "Termicursor")
+os.makedirs(APP_DATA_DIR, exist_ok=True)
 
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama").lower()
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+# Central database location on your PC
+QDRANT_PATH = os.path.join(APP_DATA_DIR, "local_qdrant")
+MEM0_QDRANT_PATH = os.path.join(APP_DATA_DIR, "local_mem0_qdrant")
+SETTINGS_PATH = os.path.join(APP_DATA_DIR, "settings.json")
+
+def load_settings():
+    if os.path.exists(SETTINGS_PATH):
+        try:
+            with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+_settings = load_settings()
+
+LLM_PROVIDER = _settings.get("llmProvider", os.getenv("LLM_PROVIDER", "ollama")).lower()
+GROQ_API_KEY = _settings.get("groqApiKey", os.getenv("GROQ_API_KEY", ""))
+GROQ_MODEL = _settings.get("groqModel", os.getenv("GROQ_MODEL", "llama-3.1-8b-instant"))
 
 EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
-LLM_MODEL = os.getenv("OLLAMA_LLM_MODEL", "qwen2.5-coder:3b")
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
+LLM_MODEL = _settings.get("ollamaModel", os.getenv("OLLAMA_LLM_MODEL", "qwen2.5-coder:3b"))
+OLLAMA_URL = _settings.get("ollamaUrl", os.getenv("OLLAMA_URL", "http://localhost:11434"))
 
 # ── Mem0 Memory Initialization ──
 try:
@@ -99,6 +119,38 @@ def get_llm():
         return ChatGroq(model=GROQ_MODEL, api_key=GROQ_API_KEY)
     else:
         return OllamaLLM(model=LLM_MODEL, base_url=OLLAMA_URL)
+
+
+def get_ollama_status():
+    """Checks Ollama status and returns a dictionary with missing models."""
+    try:
+        response = requests.get(f"{OLLAMA_URL}/api/tags", timeout=5)
+        if response.status_code != 200:
+            return {"status": "error", "reason": "ollama_error", "ollama_ready": False, "missing_models": []}
+        
+        models = [m['name'] for m in response.json().get('models', [])]
+        
+        missing = []
+        embed_found = any(EMBED_MODEL in m for m in models)
+        if not embed_found:
+            missing.append(EMBED_MODEL)
+            
+        if LLM_PROVIDER == "ollama":
+            llm_found = any(LLM_MODEL in m for m in models)
+            if not llm_found:
+                missing.append(LLM_MODEL)
+                
+        if missing:
+            return {
+                "status": "error", 
+                "reason": "missing_models", 
+                "ollama_ready": True, 
+                "missing_models": missing
+            }
+        return {"status": "ok", "ollama_ready": True, "missing_models": []}
+    except requests.exceptions.ConnectionError:
+        return {"status": "error", "reason": "connection_error", "ollama_ready": False, "missing_models": []}
+
 
 def validate_ollama_status():
     print("⏳ Checking Ollama local service status...")
@@ -225,6 +277,41 @@ def check_and_create_file(response_text, project_path):
     return created_files
 
 
+def check_and_delete_file(response_text, project_path):
+    file_pattern = r"\[DELETE_FILE:\s*([a-zA-Z0-9_\-\.\/\\]+)\]"
+    matches = re.findall(file_pattern, response_text)
+    deleted_files = []
+    
+    if not project_path:
+        print("\n❌ [System] No project path set — cannot delete files.")
+        return deleted_files
+    
+    norm_project = os.path.normpath(os.path.abspath(project_path))
+    
+    for filename in matches:
+        filename = filename.strip()
+        abs_path = os.path.normpath(os.path.join(norm_project, filename))
+        
+        if not abs_path.startswith(norm_project):
+            print(f"\n❌ [System] Refused to delete '{filename}': path escapes project directory.")
+            continue
+            
+        try:
+            if os.path.exists(abs_path):
+                if os.path.isfile(abs_path):
+                    os.remove(abs_path)
+                    print(f"\n🗑️ [System] File '{filename}' deleted at: {abs_path}")
+                    deleted_files.append(filename)
+                else:
+                    print(f"\n❌ [System] '{filename}' is a directory, not a file.")
+            else:
+                print(f"\n❌ [System] File '{filename}' not found for deletion.")
+        except Exception as e:
+            print(f"\n❌ [System] Failed to delete file '{filename}': {e}")
+            
+    return deleted_files
+
+
 def ingest_codebase(project_path):
     if not validate_ollama_status():
         return {"status": "error", "message": "Ollama is not running or missing models."}
@@ -332,7 +419,7 @@ def chat_with_cursor(project_path):
         print(f"❌ Could not find the brain for '{collection_name}'. Did you run --ingest first?")
         return
 
-    retriever = qdrant.as_retriever(search_kwargs={"k": 3}) 
+    retriever = qdrant.as_retriever(search_kwargs={"k": 10}) 
     llm = get_llm()
 
     prompt_template = """
@@ -346,6 +433,10 @@ def chat_with_cursor(project_path):
     [CREATE_FILE: <filename>]
     <file_contents>
     [/CREATE_FILE]
+
+    If the user explicitly asks you to delete or remove one or more files, you MUST structure your response to delete the files by enclosing each file deletion command in this exact tag:
+    [DELETE_FILE: <filename>]
+    You can output multiple [DELETE_FILE: <filename>] tags to delete multiple files. You should delete files exactly as requested by the user, even if they do not appear in the retrieved context.
     
     Example:
     If the user asks: "Create a python file named hello.py that prints hello world"
@@ -354,6 +445,12 @@ def chat_with_cursor(project_path):
     [CREATE_FILE: hello.py]
     print("Hello, World!")
     [/CREATE_FILE]
+
+    If the user asks: "Delete hello.py and main.py"
+    Your response should look like:
+    I will delete those files for you.
+    [DELETE_FILE: hello.py]
+    [DELETE_FILE: main.py]
 
     Relevant Memory from Past Conversations:
     {memories}
@@ -397,8 +494,8 @@ def chat_with_cursor(project_path):
             
             # Check for file creation tags and execute
             check_and_create_file(result_text, project_path)
+            check_and_delete_file(result_text, project_path)
 
-            
         except KeyboardInterrupt:
             print("\nTermiCursor shutting down...")
             break
@@ -420,7 +517,7 @@ def single_shot_query(project_path, query_text):
         print(f"❌ Could not find the brain for '{collection_name}'. Did you run --ingest first?")
         return {"error": f"Could not find the brain for '{collection_name}'. Did you run ingest first?"}
 
-    retriever = qdrant.as_retriever(search_kwargs={"k": 3}) 
+    retriever = qdrant.as_retriever(search_kwargs={"k": 10}) 
     llm = get_llm()
 
     prompt_template = """
@@ -433,6 +530,10 @@ def single_shot_query(project_path, query_text):
     [CREATE_FILE: <filename>]
     <file_contents>
     [/CREATE_FILE]
+
+    If the user explicitly asks you to delete or remove one or more files, you MUST structure your response to delete the files by enclosing each file deletion command in this exact tag:
+    [DELETE_FILE: <filename>]
+    You can output multiple [DELETE_FILE: <filename>] tags to delete multiple files. You should delete files exactly as requested by the user, even if they do not appear in the retrieved context.
     
     Example:
     If the user asks: "Create a python file named hello.py that prints hello world"
@@ -441,6 +542,12 @@ def single_shot_query(project_path, query_text):
     [CREATE_FILE: hello.py]
     print("Hello, World!")
     [/CREATE_FILE]
+
+    If the user asks: "Delete hello.py and main.py"
+    Your response should look like:
+    I will delete those files for you.
+    [DELETE_FILE: hello.py]
+    [DELETE_FILE: main.py]
 
     Relevant Memory from Past Conversations:
     {memories}
@@ -474,7 +581,8 @@ def single_shot_query(project_path, query_text):
         
         # Check for file creation tags and execute
         created_files = check_and_create_file(result_text, project_path)
-        return {"answer": result_text, "files_created": created_files}
+        deleted_files = check_and_delete_file(result_text, project_path)
+        return {"answer": result_text, "files_created": created_files, "files_deleted": deleted_files}
     except Exception as e:
         print(f"❌ Error executing query: {e}")
         return {"error": str(e)}
@@ -501,7 +609,7 @@ async def async_stream_query(project_path, query_text):
         yield f"Error: Could not find the brain for '{collection_name}'. Did you run ingest first?"
         return
 
-    retriever = qdrant.as_retriever(search_kwargs={"k": 3}) 
+    retriever = qdrant.as_retriever(search_kwargs={"k": 10}) 
     
     # We use a lower level approach here to manually stream the LLM
     # since RetrievalQA doesn't stream tokens back intuitively without callbacks.
@@ -529,6 +637,10 @@ If the user explicitly asks you to create, write, or generate a file (e.g. "crea
 [CREATE_FILE: <filename>]
 <file_contents>
 [/CREATE_FILE]
+
+If the user explicitly asks you to delete or remove one or more files, you MUST structure your response to delete the files by enclosing each file deletion command in this exact tag:
+[DELETE_FILE: <filename>]
+You can output multiple [DELETE_FILE: <filename>] tags to delete multiple files. You should delete files exactly as requested by the user, even if they do not appear in the retrieved context.
 
 Relevant Memory from Past Conversations:
 {memory_context}
@@ -559,10 +671,12 @@ Answer:"""
         # After streaming, process any files that might have been requested
         import json as _json
         created_files = check_and_create_file(full_response, project_path)
-        if created_files:
+        deleted_files = check_and_delete_file(full_response, project_path)
+        if created_files or deleted_files:
             yield _json.dumps({
                 "type": "files_created",
                 "files": created_files,
+                "files_deleted": deleted_files,
                 "project_path": project_path
             })
     except Exception as e:

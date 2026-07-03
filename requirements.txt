@@ -9,6 +9,8 @@ langchain-text-splitters
 langchain-ollama
 langchain-qdrant
 qdrant-client
+esprima
 python-dotenv
 langchain-groq
 mem0ai
+appdirs

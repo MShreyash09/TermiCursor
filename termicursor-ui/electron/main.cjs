@@ -123,6 +123,51 @@ function createWindow() {
     }
   });
 
+  ipcMain.handle('dialog:deleteFile', async (event, filePath) => {
+    try {
+      await fs.unlink(filePath);
+      return { success: true };
+    } catch (e) {
+      console.error("Failed to delete file:", e);
+      return { success: false, error: e.message };
+    }
+  });
+
+  // ── Recent Folders IPC ──
+  const recentFoldersPath = path.join(app.getPath('userData'), 'recent-folders.json');
+
+  ipcMain.handle('dialog:saveRecentFolder', async (event, folderPath) => {
+    try {
+      let recent = [];
+      try {
+        const data = await fs.readFile(recentFoldersPath, 'utf-8');
+        recent = JSON.parse(data);
+      } catch (e) {
+        // File doesn't exist yet — start fresh
+      }
+      // Remove duplicate if already present, then prepend
+      recent = recent.filter(entry => entry.path !== folderPath);
+      const folderName = path.basename(folderPath);
+      recent.unshift({ path: folderPath, name: folderName });
+      // Keep only the last 3
+      recent = recent.slice(0, 3);
+      await fs.writeFile(recentFoldersPath, JSON.stringify(recent, null, 2), 'utf-8');
+      return recent;
+    } catch (e) {
+      console.error("Failed to save recent folder:", e);
+      return [];
+    }
+  });
+
+  ipcMain.handle('dialog:loadRecentFolders', async () => {
+    try {
+      const data = await fs.readFile(recentFoldersPath, 'utf-8');
+      return JSON.parse(data);
+    } catch (e) {
+      return [];
+    }
+  });
+
   // ── Load content ──
   const isDev = !app.isPackaged;
 

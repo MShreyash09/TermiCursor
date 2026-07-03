@@ -10,4 +10,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveSettings: (settings) => ipcRenderer.invoke('dialog:saveSettings', settings),
   loadSettings: () => ipcRenderer.invoke('dialog:loadSettings'),
   getBackendPort: () => ipcRenderer.invoke('getBackendPort'),
+  deleteFile: (filePath) => ipcRenderer.invoke('dialog:deleteFile', filePath),
+  saveRecentFolder: (folderPath) => ipcRenderer.invoke('dialog:saveRecentFolder', folderPath),
+  loadRecentFolders: () => ipcRenderer.invoke('dialog:loadRecentFolders'),
 });

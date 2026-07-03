@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TermiCursor — Local, Offline AI Code Assistant</title>
+  <meta name="description"
+    content="TermiCursor is a fully offline, privacy-first AI code assistant that runs RAG over your local codebase. No cloud. No telemetry. Your code stays yours." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body>
+  <!-- ═══════════════ NAVIGATION ═══════════════ -->
+  <nav id="navbar">
+    <div class="nav-inner">
+      <a href="#" class="logo">
+        <span class="logo-icon">⌘</span>
+        <span class="logo-text">Termi<span class="accent">Cursor</span></span>
+      </a>
+      <ul class="nav-links">
+        <li><a href="#features">Features</a></li>
+        <li><a href="#architecture">Architecture</a></li>
+        <li><a href="#privacy">Privacy</a></li>
+        <li><a href="#download" class="nav-cta">Download</a></li>
+      </ul>
+      <button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Toggle menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- ═══════════════ HERO ═══════════════ -->
+  <header id="hero">
+    <div class="hero-bg-grid"></div>
+    <div class="hero-glow hero-glow-1"></div>
+    <div class="hero-glow hero-glow-2"></div>
+
+    <div class="hero-content">
+      <div class="hero-badge">
+        <span class="badge-dot"></span>
+        100% Offline &bull; Zero Telemetry &bull; Open Source
+      </div>
+      <h1>Your Code.<br /><span class="gradient-text">Your AI.</span><br />Your Machine.</h1>
+      <p class="hero-sub">
+        TermiCursor is a fully offline AI code assistant that runs Retrieval-Augmented Generation
+        locally over your codebase. No cloud APIs. No data leaves your PC. Ever.
+      </p>
+      <div class="hero-actions">
+        <a href="./Termicursor Setup 0.0.0.exe" download class="btn btn-primary" id="downloadBtn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          Download for Windows
+        </a>
+        <a href="#features" class="btn btn-ghost">
+          Learn More
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M7 17l9.2-9.2M17 17V8h-9" />
+          </svg>
+        </a>
+      </div>
+      <p class="hero-meta">Windows 10/11 &bull; ~160 MB &bull; Requires <a href="https://ollama.com" target="_blank"
+          rel="noopener">Ollama</a></p>
+    </div>
+
+    <div class="hero-visual">
+      <div class="browser-frame">
+        <div class="browser-dots">
+          <span></span><span></span><span></span>
+        </div>
+        <img src="hero-screenshot.png" alt="TermiCursor IDE Screenshot" class="hero-img" />
+      </div>
+    </div>
+  </header>
+
+  <!-- ═══════════════ LOGO CLOUD ═══════════════ -->
+  <section class="logo-cloud">
+    <p>Powered by</p>
+    <div class="logo-strip">
+      <span class="tech-chip">🦙 Ollama</span>
+      <span class="tech-chip">🔗 LangChain</span>
+      <span class="tech-chip">🧠 Qdrant</span>
+      <span class="tech-chip">⚛️ React</span>
+      <span class="tech-chip">⚡ FastAPI</span>
+      <span class="tech-chip">🖥️ Electron</span>
+    </div>
+  </section>
+
+  <!-- ═══════════════ FEATURES ═══════════════ -->
+  <section id="features">
+    <div class="section-header">
+      <span class="section-tag">Features</span>
+      <h2>Everything you need.<br /><span class="gradient-text">Nothing you don't.</span></h2>
+      <p>Built for developers who value privacy, speed, and control over their toolchain.</p>
+    </div>
+
+    <div class="features-grid">
+      <div class="feature-card feature-card-large">
+        <div class="feature-icon icon-ai">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a4 4 0 0 1 4 4v1a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z" />
+            <path d="M16 14v1a4 4 0 0 1-8 0v-1" />
+            <circle cx="12" cy="20" r="2" />
+            <path d="M12 17v1" />
+            <path d="M3 12h1m16 0h1M5.6 5.6l.7.7m11.4-.7-.7.7" />
+          </svg>
+        </div>
+        <h3>AI-Powered RAG</h3>
+        <p>Ask questions about your entire codebase. TermiCursor chunks, embeds, and retrieves the most relevant code
+          snippets using semantic vector search, then feeds them to a local LLM for precise answers.</p>
+        <div class="feature-code">
+          <pre><code><span class="code-comment">// Ask anything about your codebase</span>
+<span class="code-prompt">❯</span> How does the authentication middleware work?
+
+<span class="code-ai">🤖</span> Based on <span class="code-file">auth.py:42-78</span>, the middleware uses
+   JWT tokens validated against a local RSA key pair...
+</code></pre>
+        </div>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon icon-privacy">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+            stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>
+        </div>
+        <h3>Total Privacy</h3>
+        <p>Zero cloud. Zero telemetry. Every model runs on your machine. Your source code never touches the internet.
+        </p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon icon-models">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" />
+            <path d="M12 12l8-4.5" />
+            <path d="M12 12v9" />
+            <path d="M12 12L4 7.5" />
+          </svg>
+        </div>
+        <h3>Flexible Models</h3>
+        <p>Choose your LLM — Qwen, LLaMA, Mistral via Ollama, or use cloud Groq. Switch anytime from Settings.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon icon-code">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+            stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="16 18 22 12 16 6" />
+            <polyline points="8 6 2 12 8 18" />
+          </svg>
+        </div>
+        <h3>Syntax-Aware Parsing</h3>
+        <p>Code is chunked using language-specific AST splitters for Python, JavaScript, and TypeScript — keeping
+          functions and classes intact.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon icon-memory">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" />
+            <path d="M12 6v6l4 2" />
+          </svg>
+        </div>
+        <h3>Persistent Memory</h3>
+        <p>Powered by Mem0 — TermiCursor remembers your preferences, coding patterns, and prior context across sessions.
+        </p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon icon-file">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+            <line x1="12" y1="18" x2="12" y2="12" />
+            <line x1="9" y1="15" x2="15" y2="15" />
+          </svg>
+        </div>
+        <h3>File Operations</h3>
+        <p>Ask the AI to create, edit, or delete files directly in your project. It writes code and saves it for you
+          automatically.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ ARCHITECTURE ═══════════════ -->
+  <section id="architecture">
+    <div class="section-header">
+      <span class="section-tag">How It Works</span>
+      <h2>Two-phase <span class="gradient-text">intelligence pipeline</span></h2>
+      <p>TermiCursor first indexes your codebase into a local vector database, then uses it for intelligent retrieval.
+      </p>
+    </div>
+
+    <div class="arch-pipeline">
+      <div class="arch-phase">
+        <div class="phase-label">Phase 1 — Ingestion</div>
+        <div class="arch-steps">
+          <div class="arch-step">
+            <div class="step-num">01</div>
+            <div class="step-content">
+              <h4>Scan</h4>
+              <p>Recursively finds .py, .js, .ts, .tsx, .jsx files in your project</p>
+            </div>
+          </div>
+          <div class="arch-arrow">→</div>
+          <div class="arch-step">
+            <div class="step-num">02</div>
+            <div class="step-content">
+              <h4>Parse</h4>
+              <p>Language-aware chunking preserves functions and class boundaries</p>
+            </div>
+          </div>
+          <div class="arch-arrow">→</div>
+          <div class="arch-step">
+            <div class="step-num">03</div>
+            <div class="step-content">
+              <h4>Embed</h4>
+              <p>nomic-embed-text generates semantic vectors for each chunk</p>
+            </div>
+          </div>
+          <div class="arch-arrow">→</div>
+          <div class="arch-step">
+            <div class="step-num">04</div>
+            <div class="step-content">
+              <h4>Store</h4>
+              <p>Vectors indexed in a local, path-isolated Qdrant collection</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="arch-phase">
+        <div class="phase-label">Phase 2 — Query</div>
+        <div class="arch-steps">
+          <div class="arch-step">
+            <div class="step-num">01</div>
+            <div class="step-content">
+              <h4>Question</h4>
+              <p>Type your question in the integrated chat panel</p>
+            </div>
+          </div>
+          <div class="arch-arrow">→</div>
+          <div class="arch-step">
+            <div class="step-num">02</div>
+            <div class="step-content">
+              <h4>Retrieve</h4>
+              <p>Top-k most semantically relevant code chunks are fetched</p>
+            </div>
+          </div>
+          <div class="arch-arrow">→</div>
+          <div class="arch-step">
+            <div class="step-num">03</div>
+            <div class="step-content">
+              <h4>Augment</h4>
+              <p>Code context + memory + system persona assembled into prompt</p>
+            </div>
+          </div>
+          <div class="arch-arrow">→</div>
+          <div class="arch-step">
+            <div class="step-num">04</div>
+            <div class="step-content">
+              <h4>Generate</h4>
+              <p>Local LLM streams a precise, context-aware answer</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ PRIVACY ═══════════════ -->
+  <section id="privacy">
+    <div class="privacy-card">
+      <div class="privacy-left">
+        <span class="section-tag">Privacy Promise</span>
+        <h2>Your code <span class="gradient-text">never</span> leaves your machine</h2>
+        <p>Unlike cloud-based coding assistants, TermiCursor processes everything locally. No API calls to external
+          servers. No telemetry. No analytics. The vector database, embeddings, and LLM inference all happen on your
+          hardware.</p>
+        <div class="privacy-checks">
+          <div class="check-item"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4ecdc4"
+              stroke-width="2.5">
+              <polyline points="20 6 9 17 4 12" />
+            </svg> No cloud API calls</div>
+          <div class="check-item"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4ecdc4"
+              stroke-width="2.5">
+              <polyline points="20 6 9 17 4 12" />
+            </svg> No telemetry or analytics</div>
+          <div class="check-item"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4ecdc4"
+              stroke-width="2.5">
+              <polyline points="20 6 9 17 4 12" />
+            </svg> All models run locally via Ollama</div>
+          <div class="check-item"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4ecdc4"
+              stroke-width="2.5">
+              <polyline points="20 6 9 17 4 12" />
+            </svg> Vector database stored on your disk</div>
+          <div class="check-item"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4ecdc4"
+              stroke-width="2.5">
+              <polyline points="20 6 9 17 4 12" />
+            </svg> Optional cloud fallback (Groq) — your choice</div>
+        </div>
+      </div>
+      <div class="privacy-right">
+        <div class="privacy-visual">
+          <div class="shield">
+            <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="url(#shield-grad)" stroke-width="1.2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <defs>
+                <linearGradient id="shield-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#4ecdc4" />
+                  <stop offset="100%" stop-color="#2b6b69" />
+                </linearGradient>
+              </defs>
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            </svg>
+          </div>
+          <div class="orbit-ring orbit-1">
+            <div class="orbit-dot"></div>
+          </div>
+          <div class="orbit-ring orbit-2">
+            <div class="orbit-dot"></div>
+          </div>
+          <div class="orbit-ring orbit-3">
+            <div class="orbit-dot"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ DOWNLOAD CTA ═══════════════ -->
+  <section id="download">
+    <div class="download-card">
+      <h2>Ready to take your code <span class="gradient-text">offline</span>?</h2>
+      <p>Download TermiCursor, install Ollama, and start asking questions about your codebase in minutes.</p>
+      <div class="download-actions">
+        <a href="./Termicursor Setup 0.0.0.exe" download class="btn btn-primary btn-large">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          Download TermiCursor
+        </a>
+        <a href="https://ollama.com" target="_blank" rel="noopener" class="btn btn-ghost">
+          Get Ollama
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+            <polyline points="15 3 21 3 21 9" />
+            <line x1="10" y1="14" x2="21" y2="3" />
+          </svg>
+        </a>
+      </div>
+      <div class="download-requirements">
+        <div class="req"><span>📦</span> Windows 10/11 (x64)</div>
+        <div class="req"><span>🧠</span> 8 GB+ RAM recommended</div>
+        <div class="req"><span>🦙</span> Ollama installed separately</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ FOOTER ═══════════════ -->
+  <footer>
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <a href="#" class="logo">
+          <span class="logo-icon">⌘</span>
+          <span class="logo-text">Termi<span class="accent">Cursor</span></span>
+        </a>
+        <p>Local, offline AI for your codebase.</p>
+      </div>
+      <div class="footer-links">
+        <div class="footer-col">
+          <h4>Product</h4>
+          <a href="#features">Features</a>
+          <a href="#architecture">Architecture</a>
+          <a href="#download">Download</a>
+        </div>
+        <div class="footer-col">
+          <h4>Resources</h4>
+          <a href="https://ollama.com" target="_blank" rel="noopener">Ollama</a>
+          <a href="https://github.com" target="_blank" rel="noopener">GitHub</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 TermiCursor. Built with ❤️ for developers who care about privacy.</p>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+
+</html>

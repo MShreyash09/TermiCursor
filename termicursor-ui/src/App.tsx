@@ -12,7 +12,7 @@ import SettingsPage from './components/SettingsPage';
 function App() {
   const [projectPath, setProjectPath] = useState('');
   const [isIngesting, setIsIngesting] = useState(false);
-  const [openFiles, setOpenFiles] = useState<{path: string, name: string, content: string}[]>([]);
+  const [openFiles, setOpenFiles] = useState<{ path: string, name: string, content: string }[]>([]);
   const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
   const [activeView, setActiveView] = useState('explorer');
   const [fileTreeRefreshKey, setFileTreeRefreshKey] = useState(0);
@@ -20,6 +20,7 @@ function App() {
   const [backendStatus, setBackendStatus] = useState<any>(null);
   const [isPullingModels, setIsPullingModels] = useState(false);
   const [pullProgress, setPullProgress] = useState<Record<string, number>>({});
+  const [recentFolders, setRecentFolders] = useState<{ path: string, name: string }[]>([]);
 
   const checkStatus = (port: number = backendPort) => {
     fetch(`http://127.0.0.1:${port}/status`)
@@ -33,27 +34,27 @@ function App() {
     setIsPullingModels(true);
     for (const model of backendStatus.missing_models) {
       setPullProgress(prev => ({ ...prev, [model]: 0 }));
-      
+
       try {
         const response = await fetch(`http://127.0.0.1:${backendPort}/pull`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: model })
         });
-        
+
         if (!response.body) throw new Error("No response body");
         const reader = response.body.getReader();
         const decoder = new TextDecoder("utf-8");
         let buffer = "";
-        
+
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          
+
           buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split("\n");
           buffer = lines.pop() || "";
-          
+
           for (const line of lines) {
             if (!line.trim()) continue;
             try {
@@ -72,7 +73,7 @@ function App() {
             }
           }
         }
-        
+
         setPullProgress(prev => ({ ...prev, [model]: 100 }));
       } catch (err) {
         console.error("Failed to pull model:", err);
@@ -95,6 +96,14 @@ function App() {
       });
       // @ts-ignore
       window.electronAPI.loadSettings();
+    }
+    // Load recent folders
+    // @ts-ignore
+    if (window.electronAPI && window.electronAPI.loadRecentFolders) {
+      // @ts-ignore
+      window.electronAPI.loadRecentFolders().then((folders: any[]) => {
+        if (Array.isArray(folders)) setRecentFolders(folders);
+      });
     }
   }, []);
 
@@ -123,6 +132,14 @@ if __name__ == "__main__":
         setOpenFiles([]);
         setActiveFilePath(null);
         setActiveView('explorer');
+        // Save to recent folders
+        // @ts-ignore
+        if (window.electronAPI && window.electronAPI.saveRecentFolder) {
+          // @ts-ignore
+          window.electronAPI.saveRecentFolder(folderPath).then((updated: any[]) => {
+            if (Array.isArray(updated)) setRecentFolders(updated);
+          });
+        }
         setIsIngesting(true);
         try {
           const response = await fetch(`http://127.0.0.1:${backendPort}/ingest`, {
@@ -147,11 +164,71 @@ if __name__ == "__main__":
     }
   };
 
+  // ── Physical file delete handler ──
+  const handleDeleteFile = async (filePath: string) => {
+    // @ts-ignore
+    if (window.electronAPI && window.electronAPI.deleteFile) {
+      // @ts-ignore
+      const result = await window.electronAPI.deleteFile(filePath);
+      if (result.success) {
+        // Close the tab
+        setOpenFiles(prev => {
+          const newFiles = prev.filter(f => f.path !== filePath);
+          if (activeFilePath === filePath) {
+            const newActive = newFiles.length > 0 ? newFiles[newFiles.length - 1].path : null;
+            setActiveFilePath(newActive);
+          }
+          return newFiles;
+        });
+        // Refresh file tree
+        setFileTreeRefreshKey(prev => prev + 1);
+      } else {
+        alert(`Failed to delete file: ${result.error}`);
+      }
+    }
+  };
+
+  // ── Open a recent folder by its saved path ──
+  const handleOpenRecentFolder = async (folderPath: string) => {
+    setProjectPath(folderPath);
+    setOpenFiles([]);
+    setActiveFilePath(null);
+    setActiveView('explorer');
+    // Save to recent folders (moves it to top)
+    // @ts-ignore
+    if (window.electronAPI && window.electronAPI.saveRecentFolder) {
+      // @ts-ignore
+      window.electronAPI.saveRecentFolder(folderPath).then((updated: any[]) => {
+        if (Array.isArray(updated)) setRecentFolders(updated);
+      });
+    }
+    setIsIngesting(true);
+    try {
+      const response = await fetch(`http://127.0.0.1:${backendPort}/ingest`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_path: folderPath }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+        console.error("Ingestion failed:", errorData);
+        alert(`Ingestion failed: ${errorData.detail || 'Unknown error'}. Please check that Ollama is running and models are pulled.`);
+        setProjectPath('');
+      }
+    } catch (error) {
+      console.error("Failed to auto-ingest folder:", error);
+      alert("Failed to connect to the backend server. Make sure 'uvicorn server:app --reload' is running.");
+      setProjectPath('');
+    } finally {
+      setIsIngesting(false);
+    }
+  };
+
   // Determine what to render in the center panel
   const renderCenterContent = () => {
     if (activeView === 'profile') return <ProfilePage />;
     if (activeView === 'settings') return <SettingsPage />;
-    if (!projectPath || openFiles.length === 0) return <WelcomeScreen onOpenFolder={handleOpenFolder} />;
+    if (!projectPath || openFiles.length === 0) return <WelcomeScreen onOpenFolder={handleOpenFolder} recentFolders={recentFolders} onOpenRecentFolder={handleOpenRecentFolder} />;
     return (
       <EditorView
         openFiles={openFiles}
@@ -167,6 +244,7 @@ if __name__ == "__main__":
             return newFiles;
           });
         }}
+        onDeleteFile={handleDeleteFile}
         dummyCode={dummyCode}
       />
     );
@@ -182,11 +260,11 @@ if __name__ == "__main__":
               ⚠️ {backendStatus.reason === 'connection_error' ? 'Ollama Service Offline' : 'AI Models Missing'}
             </h2>
             <p className="text-xs text-gray-400 mt-1">
-              {backendStatus.reason === 'connection_error' 
-                ? 'Termicursor could not connect to your local Ollama. Please open the Ollama Desktop App.' 
+              {backendStatus.reason === 'connection_error'
+                ? 'Termicursor could not connect to your local Ollama. Please open the Ollama Desktop App.'
                 : `To use Termicursor locally, you need the following model(s) installed in Ollama: ${backendStatus.missing_models.join(', ')}`}
             </p>
-            
+
             {backendStatus.reason === 'missing_models' && (
               <div className="mt-3 space-y-2 w-full max-w-md">
                 {backendStatus.missing_models.map((model: string) => (
@@ -196,7 +274,7 @@ if __name__ == "__main__":
                       <span>{pullProgress[model] ?? 0}%</span>
                     </div>
                     <div className="w-full bg-gray-800 rounded-full h-1.5 overflow-hidden">
-                      <div 
+                      <div
                         className="bg-[#3794ff] h-1.5 rounded-full transition-all duration-300"
                         style={{ width: `${pullProgress[model] ?? 0}%` }}
                       />
@@ -206,9 +284,9 @@ if __name__ == "__main__":
               </div>
             )}
           </div>
-          
+
           <div className="shrink-0 flex gap-3">
-            <button 
+            <button
               onClick={() => checkStatus()}
               disabled={isPullingModels}
               className="bg-[#1a3a3a] hover:bg-[#235353] text-gray-200 px-4 py-2 rounded text-xs transition-colors border border-[#2b6b69]/40 disabled:opacity-50"
@@ -216,7 +294,7 @@ if __name__ == "__main__":
               Retry Connection
             </button>
             {backendStatus.reason === 'missing_models' && (
-              <button 
+              <button
                 onClick={handleInstallModels}
                 disabled={isPullingModels}
                 className="bg-[#2b6b69] hover:bg-[#378885] text-white px-4 py-2 rounded text-xs transition-colors disabled:opacity-50 flex items-center gap-2"
@@ -239,7 +317,7 @@ if __name__ == "__main__":
       <div className="flex-1 flex overflow-hidden">
         <ActivityBar activeView={activeView} onViewChange={setActiveView} />
         <PanelGroup orientation="horizontal">
-          <Panel defaultSize={150} minSize={100} maxSize={250} className="flex overflow-hidden">
+          <Panel defaultSize={80} minSize={80} maxSize={200} className="flex overflow-hidden">
             <FileTree
               projectPath={projectPath}
               onSelectFile={async (filePath, fileName) => {
@@ -266,12 +344,12 @@ if __name__ == "__main__":
           </Panel>
           <PanelResizeHandle className="w-1.5 bg-[#1a3a3a] hover:bg-[#3794ff] active:bg-[#3794ff] cursor-col-resize transition-colors" />
 
-          <Panel defaultSize={45} minSize={20}>
+          <Panel defaultSize={40} minSize={15}>
             {renderCenterContent()}
           </Panel>
           <PanelResizeHandle className="w-1.5 bg-[#1a3a3a] hover:bg-[#3794ff] active:bg-[#3794ff] cursor-col-resize transition-colors" />
 
-          <Panel defaultSize={700} minSize={200} maxSize={700} className="flex overflow-hidden">
+          <Panel defaultSize={50} minSize={15} maxSize={600} className="flex overflow-hidden">
             <Sidebar backendPort={backendPort}
               projectPath={projectPath}
               isIngesting={isIngesting}

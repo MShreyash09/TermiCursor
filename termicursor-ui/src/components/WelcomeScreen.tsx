@@ -1,10 +1,17 @@
-import { FolderOpen } from 'lucide-react';
+import { FolderOpen, Clock, ChevronRight } from 'lucide-react';
+
+interface RecentFolder {
+  path: string;
+  name: string;
+}
 
 interface WelcomeScreenProps {
   onOpenFolder: () => void;
+  recentFolders?: RecentFolder[];
+  onOpenRecentFolder?: (path: string) => void;
 }
 
-export default function WelcomeScreen({ onOpenFolder }: WelcomeScreenProps) {
+export default function WelcomeScreen({ onOpenFolder, recentFolders = [], onOpenRecentFolder }: WelcomeScreenProps) {
   return (
     <div className="flex-1 h-full bg-[#031c1d] flex flex-col items-center pt-24 overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: '#424242 transparent' }}>
       {/* Logo */}
@@ -27,18 +34,30 @@ export default function WelcomeScreen({ onOpenFolder }: WelcomeScreenProps) {
         </button>
       </div>
 
-      {/* Workspaces List */}
-      <div className="w-full max-w-md px-4">
-        <h3 className="text-sm font-semibold text-gray-300 mb-4 tracking-wide">Workspaces</h3>
-        <div className="flex flex-col gap-2">
-          {['TermiCursor', 'GenAI', 'React'].map((ws, i) => (
-            <div key={i} className="p-3 bg-[#052122] border border-[#0f3435] hover:bg-[#0a2c2d] rounded cursor-pointer transition-colors group">
-              <div className="text-gray-200 font-medium group-hover:text-blue-400 transition-colors">{ws}</div>
-              <div className="text-xs text-gray-500 truncate">C:\Users\shrey\OneDrive\Desktop</div>
-            </div>
-          ))}
+      {/* Recent Folders List — only shown if there are recent folders */}
+      {recentFolders.length > 0 && (
+        <div className="w-full max-w-md px-4">
+          <h3 className="text-sm font-semibold text-gray-300 mb-4 tracking-wide flex items-center gap-2">
+            <Clock size={14} className="text-gray-500" />
+            Recent Workspaces
+          </h3>
+          <div className="flex flex-col gap-2">
+            {recentFolders.map((folder, i) => (
+              <div
+                key={i}
+                onClick={() => onOpenRecentFolder?.(folder.path)}
+                className="p-3 bg-[#052122] border border-[#0f3435] hover:bg-[#0a2c2d] hover:border-[#1a4a4c] rounded cursor-pointer transition-all group flex items-center justify-between"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="text-gray-200 font-medium group-hover:text-cyan-400 transition-colors truncate">{folder.name}</div>
+                  <div className="text-xs text-gray-500 truncate">{folder.path}</div>
+                </div>
+                <ChevronRight size={16} className="text-gray-600 group-hover:text-cyan-400 transition-colors shrink-0 ml-3" />
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

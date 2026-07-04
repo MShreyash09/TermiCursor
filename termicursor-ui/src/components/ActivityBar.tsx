@@ -35,7 +35,7 @@ export default function ActivityBar({ activeView = 'explorer', onViewChange }: A
   };
 
   return (
-    <div className="w-12 h-full bg-[#051e20] border-r border-[#1a3a3a] flex flex-col justify-between items-center py-2 shrink-0 z-40">
+    <div className="w-12 h-full bg-surface border-r border-border flex flex-col justify-between items-center py-2 shrink-0 z-40">
       <div className="flex flex-col gap-4 items-center w-full">
         {topItems.map(renderButton)}
       </div>

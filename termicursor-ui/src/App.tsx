@@ -8,6 +8,9 @@ import ActivityBar from './components/ActivityBar';
 import WelcomeScreen from './components/WelcomeScreen';
 import ProfilePage from './components/ProfilePage';
 import SettingsPage from './components/SettingsPage';
+import StatusBar from './components/StatusBar';
+import CommandPalette from './components/CommandPalette';
+import TerminalPanel from './components/TerminalPanel';
 
 function App() {
   const [projectPath, setProjectPath] = useState('');
@@ -251,68 +254,9 @@ if __name__ == "__main__":
   };
 
   return (
-    <div className="w-screen h-screen flex flex-col bg-[#031c1d] text-gray-200 overflow-hidden font-sans">
+    <div className="w-screen h-screen flex flex-col bg-background text-gray-200 overflow-hidden font-sans">
+      <CommandPalette />
       <TitleBar />
-      {backendStatus && backendStatus.status === 'error' && (
-        <div className="bg-[#1f0d0e]/95 border-b border-red-900/50 text-gray-200 px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4 transition-all z-50">
-          <div className="flex-1">
-            <h2 className="text-sm font-semibold text-red-400 flex items-center gap-2">
-              ⚠️ {backendStatus.reason === 'connection_error' ? 'Ollama Service Offline' : 'AI Models Missing'}
-            </h2>
-            <p className="text-xs text-gray-400 mt-1">
-              {backendStatus.reason === 'connection_error'
-                ? 'Termicursor could not connect to your local Ollama. Please open the Ollama Desktop App.'
-                : `To use Termicursor locally, you need the following model(s) installed in Ollama: ${backendStatus.missing_models.join(', ')}`}
-            </p>
-
-            {backendStatus.reason === 'missing_models' && (
-              <div className="mt-3 space-y-2 w-full max-w-md">
-                {backendStatus.missing_models.map((model: string) => (
-                  <div key={model} className="text-xs">
-                    <div className="flex justify-between text-gray-400 mb-1">
-                      <span>{model}</span>
-                      <span>{pullProgress[model] ?? 0}%</span>
-                    </div>
-                    <div className="w-full bg-gray-800 rounded-full h-1.5 overflow-hidden">
-                      <div
-                        className="bg-[#3794ff] h-1.5 rounded-full transition-all duration-300"
-                        style={{ width: `${pullProgress[model] ?? 0}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="shrink-0 flex gap-3">
-            <button
-              onClick={() => checkStatus()}
-              disabled={isPullingModels}
-              className="bg-[#1a3a3a] hover:bg-[#235353] text-gray-200 px-4 py-2 rounded text-xs transition-colors border border-[#2b6b69]/40 disabled:opacity-50"
-            >
-              Retry Connection
-            </button>
-            {backendStatus.reason === 'missing_models' && (
-              <button
-                onClick={handleInstallModels}
-                disabled={isPullingModels}
-                className="bg-[#2b6b69] hover:bg-[#378885] text-white px-4 py-2 rounded text-xs transition-colors disabled:opacity-50 flex items-center gap-2"
-              >
-                {isPullingModels ? (
-                  <>
-                    <svg className="animate-spin h-3 w-3 text-white" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                    Downloading...
-                  </>
-                ) : 'Install Models'}
-              </button>
-            )}
-          </div>
-        </div>
-      )}
 
       <div className="flex-1 flex overflow-hidden">
         <ActivityBar activeView={activeView} onViewChange={setActiveView} />
@@ -342,12 +286,25 @@ if __name__ == "__main__":
               refreshKey={fileTreeRefreshKey}
             />
           </Panel>
-          <PanelResizeHandle className="w-1.5 bg-[#1a3a3a] hover:bg-[#3794ff] active:bg-[#3794ff] cursor-col-resize transition-colors" />
+          <PanelResizeHandle className="w-1.5 bg-surface hover:bg-primary active:bg-primary cursor-col-resize transition-colors" />
 
           <Panel defaultSize={40} minSize={15}>
-            {renderCenterContent()}
+            <PanelGroup orientation="vertical">
+              <Panel defaultSize={70} minSize={20}>
+                {renderCenterContent()}
+              </Panel>
+              <PanelResizeHandle className="h-1.5 bg-surface border-t border-border hover:bg-primary active:bg-primary cursor-row-resize transition-colors z-50" />
+              <Panel defaultSize={30} minSize={15}>
+                {projectPath && <TerminalPanel projectPath={projectPath} />}
+                {!projectPath && (
+                  <div className="w-full h-full bg-background border-t border-border flex items-center justify-center text-xs text-gray-500">
+                    Open a folder to use the terminal
+                  </div>
+                )}
+              </Panel>
+            </PanelGroup>
           </Panel>
-          <PanelResizeHandle className="w-1.5 bg-[#1a3a3a] hover:bg-[#3794ff] active:bg-[#3794ff] cursor-col-resize transition-colors" />
+          <PanelResizeHandle className="w-1.5 bg-surface hover:bg-primary active:bg-primary cursor-col-resize transition-colors" />
 
           <Panel defaultSize={50} minSize={15} maxSize={600} className="flex overflow-hidden">
             <Sidebar backendPort={backendPort}
@@ -360,6 +317,14 @@ if __name__ == "__main__":
           </Panel>
         </PanelGroup>
       </div>
+      
+      <StatusBar 
+        backendStatus={backendStatus} 
+        pullProgress={pullProgress} 
+        isPullingModels={isPullingModels} 
+        onInstallModels={handleInstallModels} 
+        onRetryConnection={() => checkStatus()} 
+      />
     </div>
   );
 }

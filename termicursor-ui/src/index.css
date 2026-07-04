@@ -4,10 +4,11 @@
   --font-sans: "Inter", sans-serif;
   --font-mono: "Fira Code", monospace;
 
-  --color-background: #0a0a0a;
+  --color-background: #09090b;
   --color-surface: #121212;
-  --color-border: #2a2a2a;
-  --color-primary: #06b6d4;
+  --color-surface-hover: #18181b;
+  --color-border: #27272a;
+  --color-primary: #0ea5e9;
   --color-secondary: #8b5cf6;
 }
 

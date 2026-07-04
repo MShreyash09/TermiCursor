@@ -120,20 +120,20 @@ export default function Sidebar({ projectPath, isIngesting, onFilesCreated, back
   };
 
   return (
-    <div className="w-full h-full bg-[#05181a] border-l border-[#1a3a3a] flex flex-col pt-10 z-40">
+    <div className="w-full h-full bg-surface border-l border-border flex flex-col pt-10 z-40">
 
       {/* Sidebar Header */}
-      <div className="px-4 py-2 flex items-center justify-between border-b border-[#1a3a3a] shrink-0">
+      <div className="px-4 py-2 flex items-center justify-between border-b border-border shrink-0">
         <h2 className="text-sm font-semibold text-gray-200">TermiCursor</h2>
         <div className="flex gap-2">
           {/* Settings icon or similar can go here */}
         </div>
       </div>
       {/* Model Selection Info */}
-      <div className="px-4 py-2 border-b border-[#1a3a3a]">
+      <div className="px-4 py-2 border-b border-border">
         <div className="relative">
           <select 
-            className="w-full bg-[#0b2b2d] text-xs text-gray-300 rounded-lg p-2 appearance-none border border-[#1a4042] focus:outline-none focus:border-[#2b6b69] cursor-pointer"
+            className="w-full bg-[#0a0a0a] text-xs text-gray-300 rounded-lg p-2 appearance-none border border-border focus:outline-none focus:border-primary cursor-pointer"
             defaultValue="qwen"
           >
             <option value="qwen">Qwen 2.5 Coder (Local)</option>
@@ -183,8 +183,8 @@ export default function Sidebar({ projectPath, isIngesting, onFilesCreated, back
       </div>
 
       {/* Input Area */}
-      <div className="p-4 bg-[#05181a]">
-        <div className="relative group bg-[#0b2b2d] rounded-xl border border-[#1a4042] focus-within:border-[#2b6b69]">
+      <div className="p-4 bg-surface">
+        <div className="relative group bg-[#0a0a0a] rounded-xl border border-border focus-within:border-primary">
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}

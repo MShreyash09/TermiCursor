@@ -67,6 +67,31 @@ function createWindow() {
   });
   ipcMain.on('window-close', () => win.close());
 
+  // ── Terminal Handlers ──
+  let ptyProcess = null;
+  ipcMain.handle('terminal:spawn', (event, projectPath) => {
+    if (ptyProcess) ptyProcess.kill();
+    const shell = process.platform === 'win32' ? 'powershell.exe' : 'bash';
+    ptyProcess = spawn(shell, [], {
+      env: process.env,
+      cwd: projectPath || app.getPath('userData'),
+    });
+    
+    ptyProcess.stdout.on('data', (data) => {
+      win.webContents.send('terminal:incomingData', data.toString());
+    });
+    ptyProcess.stderr.on('data', (data) => {
+      win.webContents.send('terminal:incomingData', data.toString());
+    });
+    return true;
+  });
+
+  ipcMain.on('terminal:write', (event, data) => {
+    if (ptyProcess) {
+      ptyProcess.stdin.write(data);
+    }
+  });
+
   ipcMain.handle('dialog:openFolder', async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog(win, {
       properties: ['openDirectory']
@@ -97,6 +122,16 @@ function createWindow() {
     } catch (e) {
       console.error(e);
       return `Error reading file: ${e.message}`;
+    }
+  });
+
+  ipcMain.handle('dialog:writeFile', async (event, filePath, content) => {
+    try {
+      await fs.writeFile(filePath, content, 'utf-8');
+      return { success: true };
+    } catch (e) {
+      console.error(e);
+      return { success: false, error: e.message };
     }
   });
 

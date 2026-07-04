@@ -72,18 +72,36 @@ export default function EditorView({ openFiles, activeFilePath, onSelectFile, on
     : fileName.endsWith('.html') ? 'html' 
     : 'plaintext';
 
+  const handleEditorDidMount = (editor: any, monaco: any) => {
+    monaco.editor.defineTheme('termicursor-dark', {
+      base: 'vs-dark',
+      inherit: true,
+      rules: [],
+      colors: { 'editor.background': '#09090b' }
+    });
+    monaco.editor.setTheme('termicursor-dark');
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, async () => {
+      const val = editor.getValue();
+      // @ts-ignore
+      if (window.electronAPI && window.electronAPI.writeFile && activeFilePath) {
+        // @ts-ignore
+        await window.electronAPI.writeFile(activeFilePath, val);
+      }
+    });
+  };
+
   return (
-    <div className="flex-1 h-full pt-10 bg-[#0a0a0a] overflow-hidden relative">
+    <div className="flex-1 h-full pt-10 bg-background overflow-hidden relative">
       {/* Tab bar */}
-      <div className="h-9 bg-[#121212]/50 border-b border-[#2a2a2a] flex items-center overflow-x-auto no-scrollbar">
+      <div className="h-9 bg-surface border-b border-border flex items-center overflow-x-auto no-scrollbar">
         {openFiles.map((file) => (
           <div
             key={file.path}
             onClick={() => onSelectFile(file.path)}
-            className={`flex items-center group h-full px-4 border-r border-[#2a2a2a] cursor-pointer min-w-max transition-colors
+            className={`flex items-center group h-full px-4 border-r border-border cursor-pointer min-w-max transition-colors
               ${activeFilePath === file.path 
-                ? 'bg-[#0a0a0a] border-t-2 border-t-cyan-500/60 text-gray-200' 
-                : 'bg-transparent border-t-2 border-t-transparent text-gray-500 hover:bg-[#1a1a1a] hover:text-gray-300'
+                ? 'bg-background border-t-2 border-t-primary text-gray-200' 
+                : 'bg-transparent border-t-2 border-t-transparent text-gray-500 hover:bg-surface-hover hover:text-gray-300'
               }`}
           >
             <span className="text-xs mr-2 select-none">{file.name}</span>
@@ -107,8 +125,8 @@ export default function EditorView({ openFiles, activeFilePath, onSelectFile, on
                 }}
                 className={`p-0.5 rounded-md flex items-center justify-center transition-colors
                   ${activeFilePath === file.path 
-                    ? 'text-gray-400 hover:text-gray-200 hover:bg-[#2a2a2a]' 
-                    : 'text-gray-600 group-hover:text-gray-400 hover:bg-[#2a2a2a] hover:text-gray-200 opacity-0 group-hover:opacity-100'
+                    ? 'text-gray-400 hover:text-gray-200 hover:bg-surface-hover' 
+                    : 'text-gray-600 group-hover:text-gray-400 hover:bg-surface hover:text-gray-200 opacity-0 group-hover:opacity-100'
                   }`}
               >
                 <X size={14} />
@@ -119,11 +137,18 @@ export default function EditorView({ openFiles, activeFilePath, onSelectFile, on
       </div>
       
       {activeFile && (
+        <div className="h-6 px-4 bg-background border-b border-border flex items-center text-[11px] text-gray-500 font-mono select-none">
+           <span>{activeFile.path.replace(/\\/g, '/')}</span>
+        </div>
+      )}
+      
+      {activeFile && (
         <Editor
-          height="calc(100vh - 76px)"
-          theme="vs-dark"
+          height="calc(100vh - 76px - 24px)"
+          theme="termicursor-dark"
           language={language}
           value={content}
+          onMount={handleEditorDidMount}
           options={{
             minimap: { enabled: true },
             fontSize: 14,
@@ -133,7 +158,7 @@ export default function EditorView({ openFiles, activeFilePath, onSelectFile, on
             cursorBlinking: "smooth",
             cursorSmoothCaretAnimation: "on",
             padding: { top: 16 },
-            readOnly: true,
+            readOnly: false,
             renderLineHighlight: "all",
             scrollBeyondLastLine: false,
           }}

@@ -120,8 +120,8 @@ export default function FileTree({ projectPath, onSelectFile, onOpenFolder, refr
   }, [projectPath, refreshKey]);
 
   return (
-    <div className="w-full h-full bg-[#1e1e1e] border-r border-[#2a2a2a] flex flex-col pt-10 z-30 shadow-md">
-      <div className="px-4 py-2 flex items-center justify-between text-xs font-semibold tracking-widest text-gray-500 uppercase border-b border-[#2a2a2a] shrink-0">
+    <div className="w-full h-full bg-[#141414] border-r border-border flex flex-col pt-10 z-30 shadow-md">
+      <div className="px-4 py-2 flex items-center justify-between text-xs font-semibold tracking-widest text-gray-500 uppercase border-b border-border shrink-0">
         <span>Explorer</span>
         {projectPath && (
           <button onClick={onOpenFolder} className="hover:text-white transition-colors" title="Open Folder">

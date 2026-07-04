@@ -17,13 +17,17 @@
       "output": "release"
     },
     "win": {
-      "target": ["nsis"]
+      "target": [
+        "nsis"
+      ]
     },
     "extraResources": [
       {
         "from": "../dist/termicursor-backend",
         "to": "termicursor-backend",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "files": [
@@ -48,12 +52,15 @@
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
     "@tailwindcss/vite": "^4.3.1",
+    "@xterm/addon-fit": "^0.11.0",
+    "cmdk": "^1.1.1",
     "framer-motion": "^12.40.0",
     "lucide-react": "^1.18.0",
     "monaco-editor": "^0.55.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-markdown": "^10.1.0",
-    "react-resizable-panels": "^4.11.2"
+    "react-resizable-panels": "^4.11.2",
+    "xterm": "^5.3.0"
   }
 }

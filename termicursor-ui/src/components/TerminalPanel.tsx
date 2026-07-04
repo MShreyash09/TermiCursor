@@ -14,6 +14,40 @@ export default function TerminalPanel({ projectPath }: TerminalPanelProps) {
   useEffect(() => {
     if (!terminalRef.current) return;
 
+    let currentFontFamily = "'Fira Code', monospace";
+    let currentFontSize = 13;
+
+    // Load initial settings
+    // @ts-ignore
+    if (window.electronAPI && window.electronAPI.loadSettings) {
+      // @ts-ignore
+      window.electronAPI.loadSettings().then(loaded => {
+        if (loaded) {
+          if (loaded.fontFamily) currentFontFamily = loaded.fontFamily;
+          if (loaded.fontSize) currentFontSize = parseInt(loaded.fontSize);
+          
+          if (xtermRef.current) {
+            xtermRef.current.options.fontFamily = currentFontFamily;
+            xtermRef.current.options.fontSize = currentFontSize;
+          }
+        }
+      });
+
+      // @ts-ignore
+      window.electronAPI.onSettingsChanged?.((newSettings) => {
+        if (xtermRef.current) {
+          if (newSettings.fontFamily) {
+            currentFontFamily = newSettings.fontFamily;
+            xtermRef.current.options.fontFamily = currentFontFamily;
+          }
+          if (newSettings.fontSize) {
+            currentFontSize = parseInt(newSettings.fontSize);
+            xtermRef.current.options.fontSize = currentFontSize;
+          }
+        }
+      });
+    }
+
     const term = new Terminal({
       theme: {
         background: '#09090b',
@@ -29,8 +63,8 @@ export default function TerminalPanel({ projectPath }: TerminalPanelProps) {
         cyan: '#06b6d4',
         white: '#ffffff'
       },
-      fontFamily: "'Fira Code', monospace",
-      fontSize: 13,
+      fontFamily: currentFontFamily,
+      fontSize: currentFontSize,
       cursorBlink: true,
     });
     

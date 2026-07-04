@@ -32,10 +32,37 @@ export default function EditorView({ openFiles, activeFilePath, onSelectFile, on
   const [skipConfirmation, setSkipConfirmation] = useState(false);
 
   // Load "don't ask again" preference from localStorage on mount
+  const [editorSettings, setEditorSettings] = useState({
+    fontSize: 14,
+    fontFamily: "'Fira Code', 'Cascadia Code', monospace"
+  });
+
   useEffect(() => {
     const stored = localStorage.getItem("termicursor_skip_delete_confirm");
     if (stored === "true") {
       setSkipConfirmation(true);
+    }
+    
+    // @ts-ignore
+    if (window.electronAPI && window.electronAPI.loadSettings) {
+      // @ts-ignore
+      window.electronAPI.loadSettings().then(loaded => {
+        if (loaded) {
+          setEditorSettings(prev => ({
+            ...prev,
+            fontSize: loaded.fontSize ? parseInt(loaded.fontSize) : prev.fontSize,
+            fontFamily: loaded.fontFamily || prev.fontFamily
+          }));
+        }
+      });
+      // @ts-ignore
+      window.electronAPI.onSettingsChanged?.((newSettings) => {
+        setEditorSettings(prev => ({
+          ...prev,
+          fontSize: newSettings.fontSize ? parseInt(newSettings.fontSize) : prev.fontSize,
+          fontFamily: newSettings.fontFamily || prev.fontFamily
+        }));
+      });
     }
   }, []);
 
@@ -151,8 +178,8 @@ export default function EditorView({ openFiles, activeFilePath, onSelectFile, on
           onMount={handleEditorDidMount}
           options={{
             minimap: { enabled: true },
-            fontSize: 14,
-            fontFamily: "'Fira Code', 'Cascadia Code', monospace",
+            fontSize: editorSettings.fontSize,
+            fontFamily: editorSettings.fontFamily,
             fontLigatures: true,
             smoothScrolling: true,
             cursorBlinking: "smooth",

@@ -35,7 +35,7 @@ export default function StatusBar({ backendStatus, pullProgress, isPullingModels
           </div>
         );
       }
-      
+
       if (backendStatus.reason === 'missing_models') {
         return (
           <div className="flex items-center gap-3">
@@ -43,7 +43,7 @@ export default function StatusBar({ backendStatus, pullProgress, isPullingModels
               <AlertTriangle size={13} />
               <span>Models Missing</span>
             </div>
-            
+
             {isPullingModels ? (
               <div className="flex items-center gap-3">
                 <Download size={13} className="text-cyan-400 animate-bounce" />
@@ -74,15 +74,15 @@ export default function StatusBar({ backendStatus, pullProgress, isPullingModels
   return (
     <div className="h-[22px] bg-[#007acc] border-t border-border flex items-center justify-between px-3 text-[11px] font-mono text-white select-none z-50">
       <div className="flex items-center gap-4 h-full">
-        <div className="flex items-center gap-1.5 text-white/90 hover:text-white cursor-pointer transition-colors">
+        {/* <div className="flex items-center gap-1.5 text-white/90 hover:text-white cursor-pointer transition-colors">
           <GitBranch size={13} />
           <span>main*</span>
-        </div>
+        </div> */}
         {renderBackendStatus()}
       </div>
 
       <div className="flex items-center gap-4 text-white/80 h-full">
-        <div className="hover:text-white cursor-pointer transition-colors">UTF-8</div>
+        {/* <div className="hover:text-white cursor-pointer transition-colors">UTF-8</div> */}
         <div className="hover:text-white cursor-pointer transition-colors">TermiCursor</div>
       </div>
     </div>

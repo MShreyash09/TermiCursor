@@ -45,7 +45,7 @@ function FolderNode({ node, onSelectFile, depth }: { node: FileNode, onSelectFil
 
   return (
     <div>
-      <div 
+      <div
         className="flex items-center py-1 px-2 hover:bg-white/5 cursor-pointer text-gray-300 hover:text-white transition-colors"
         style={{ paddingLeft: `${depth * 12 + 8}px` }}
         onClick={toggleOpen}
@@ -75,7 +75,7 @@ function FolderNode({ node, onSelectFile, depth }: { node: FileNode, onSelectFil
 
 function FileNodeItem({ node, onSelectFile, depth }: { node: FileNode, onSelectFile: (path: string, name: string) => void, depth: number }) {
   return (
-    <div 
+    <div
       className="flex items-center py-1 px-2 hover:bg-[#37373d] cursor-pointer text-[#cccccc] hover:text-white transition-colors"
       style={{ paddingLeft: `${depth * 12 + 8 + 20}px` }}
       onClick={() => onSelectFile(node.path, node.name)}
@@ -139,7 +139,7 @@ export default function FileTree({ projectPath, onSelectFile, onOpenFolder, refr
             <div className="p-4 flex flex-col gap-4 text-xs">
               <div>
                 <p className="mb-2">You have not yet opened a folder.</p>
-                <button 
+                <button
                   onClick={onOpenFolder}
                   className="w-full py-1.5 bg-[#1e4b4a] hover:bg-[#255c5a] text-white rounded transition-colors"
                 >

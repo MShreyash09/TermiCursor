@@ -261,7 +261,7 @@ if __name__ == "__main__":
       <div className="flex-1 flex overflow-hidden">
         <ActivityBar activeView={activeView} onViewChange={setActiveView} />
         <PanelGroup orientation="horizontal">
-          <Panel defaultSize={80} minSize={80} maxSize={200} className="flex overflow-hidden">
+          <Panel defaultSize={200} minSize={100} maxSize={200} className="flex overflow-hidden">
             <FileTree
               projectPath={projectPath}
               onSelectFile={async (filePath, fileName) => {
@@ -288,13 +288,16 @@ if __name__ == "__main__":
           </Panel>
           <PanelResizeHandle className="w-1.5 bg-surface hover:bg-primary active:bg-primary cursor-col-resize transition-colors" />
 
-          <Panel defaultSize={40} minSize={15}>
+          {/*editor resizing*/}
+          <Panel defaultSize={500} minSize={400}>
             <PanelGroup orientation="vertical">
               <Panel defaultSize={70} minSize={20}>
                 {renderCenterContent()}
               </Panel>
               <PanelResizeHandle className="h-1.5 bg-surface border-t border-border hover:bg-primary active:bg-primary cursor-row-resize transition-colors z-50" />
-              <Panel defaultSize={30} minSize={15}>
+
+              {/* terminal resizing */}
+              <Panel defaultSize={10} minSize={10}>
                 {projectPath && <TerminalPanel projectPath={projectPath} />}
                 {!projectPath && (
                   <div className="w-full h-full bg-background border-t border-border flex items-center justify-center text-xs text-gray-500">
@@ -305,8 +308,8 @@ if __name__ == "__main__":
             </PanelGroup>
           </Panel>
           <PanelResizeHandle className="w-1.5 bg-surface hover:bg-primary active:bg-primary cursor-col-resize transition-colors" />
-
-          <Panel defaultSize={50} minSize={15} maxSize={600} className="flex overflow-hidden">
+          {/* AI chat side bar resizing */}
+          <Panel defaultSize={300} minSize={200} maxSize={400} className="flex overflow-hidden">
             <Sidebar backendPort={backendPort}
               projectPath={projectPath}
               isIngesting={isIngesting}
@@ -317,13 +320,13 @@ if __name__ == "__main__":
           </Panel>
         </PanelGroup>
       </div>
-      
-      <StatusBar 
-        backendStatus={backendStatus} 
-        pullProgress={pullProgress} 
-        isPullingModels={isPullingModels} 
-        onInstallModels={handleInstallModels} 
-        onRetryConnection={() => checkStatus()} 
+
+      <StatusBar
+        backendStatus={backendStatus}
+        pullProgress={pullProgress}
+        isPullingModels={isPullingModels}
+        onInstallModels={handleInstallModels}
+        onRetryConnection={() => checkStatus()}
       />
     </div>
   );

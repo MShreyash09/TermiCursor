@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
+import { useState, useEffect, useRef } from 'react';
+import { Panel, Group as PanelGroup, Separator as PanelResizeHandle, type PanelImperativeHandle } from 'react-resizable-panels';
 import TitleBar from './components/TitleBar';
 import Sidebar from './components/Sidebar';
 import EditorView from './components/EditorView';
@@ -24,6 +24,97 @@ function App() {
   const [isPullingModels, setIsPullingModels] = useState(false);
   const [pullProgress, setPullProgress] = useState<Record<string, number>>({});
   const [recentFolders, setRecentFolders] = useState<{ path: string, name: string }[]>([]);
+  const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
+  const [updateDownloaded, setUpdateDownloaded] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+
+  // Refs for collapsible panels
+  const fileTreePanelRef = useRef<PanelImperativeHandle>(null);
+  const terminalPanelRef = useRef<PanelImperativeHandle>(null);
+  const aiChatPanelRef = useRef<PanelImperativeHandle>(null);
+
+  const toggleFileTree = () => {
+    const panel = fileTreePanelRef.current;
+    if (panel) {
+      if (panel.isCollapsed()) {
+        panel.expand();
+      } else {
+        panel.collapse();
+      }
+    }
+  };
+
+  const toggleTerminal = () => {
+    const panel = terminalPanelRef.current;
+    if (panel) {
+      if (panel.isCollapsed()) {
+        panel.expand();
+      } else {
+        panel.collapse();
+      }
+    }
+  };
+
+  const toggleAiChat = () => {
+    const panel = aiChatPanelRef.current;
+    if (panel) {
+      if (panel.isCollapsed()) {
+        panel.expand();
+      } else {
+        panel.collapse();
+      }
+    }
+  };
+
+  // Keyboard shortcut listeners
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        return;
+      }
+
+      // Ctrl + B -> Toggle File Tree (Sidebar)
+      if (e.ctrlKey && e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        toggleFileTree();
+      }
+
+      // Ctrl + ` -> Toggle Terminal
+      if (e.ctrlKey && e.key === '`') {
+        e.preventDefault();
+        toggleTerminal();
+      }
+
+      // Ctrl + , -> Switch to Settings
+      if (e.ctrlKey && e.key === ',') {
+        e.preventDefault();
+        setActiveView('settings');
+      }
+
+      // Ctrl + E -> Switch back to Explorer
+      if (e.ctrlKey && e.key.toLowerCase() === 'e') {
+        e.preventDefault();
+        setActiveView('explorer');
+        fileTreePanelRef.current?.expand();
+      }
+
+      // Ctrl + L -> Toggle AI Chat
+      if (e.ctrlKey && e.key.toLowerCase() === 'l') {
+        e.preventDefault();
+        toggleAiChat();
+      }
+
+      // Ctrl + / or Ctrl + ? -> Show Shortcuts
+      if (e.ctrlKey && (e.key === '/' || e.key === '?')) {
+        e.preventDefault();
+        setShowShortcuts(prev => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const checkStatus = (port: number = backendPort) => {
     fetch(`http://127.0.0.1:${port}/status`)
@@ -106,6 +197,22 @@ function App() {
       // @ts-ignore
       window.electronAPI.loadRecentFolders().then((folders: any[]) => {
         if (Array.isArray(folders)) setRecentFolders(folders);
+      });
+    }
+
+    // Auto-update event listeners
+    // @ts-ignore
+    if (window.electronAPI && window.electronAPI.onUpdateAvailable) {
+      // @ts-ignore
+      window.electronAPI.onUpdateAvailable((version: string) => {
+        setUpdateAvailable(version);
+      });
+    }
+    // @ts-ignore
+    if (window.electronAPI && window.electronAPI.onUpdateDownloaded) {
+      // @ts-ignore
+      window.electronAPI.onUpdateDownloaded(() => {
+        setUpdateDownloaded(true);
       });
     }
   }, []);
@@ -255,13 +362,91 @@ if __name__ == "__main__":
 
   return (
     <div className="w-screen h-screen flex flex-col bg-background text-gray-200 overflow-hidden font-sans">
-      <CommandPalette />
+      <CommandPalette
+        onToggleTerminal={toggleTerminal}
+        onToggleSidebar={toggleFileTree}
+        onOpenSettings={() => setActiveView('settings')}
+      />
       <TitleBar />
+
+      {updateAvailable && (
+        <div className="bg-[#162031] border-b border-cyan-800/30 text-gray-300 text-xs px-4 py-2 flex items-center justify-between shrink-0 z-[100] transition-all">
+          <div className="flex items-center gap-2">
+            <div className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
+            </div>
+            <span>
+              {updateDownloaded
+                ? `Update v${updateAvailable} has been downloaded and is ready to install!`
+                : `A new update (v${updateAvailable}) is downloading in the background...`}
+            </span>
+          </div>
+          {updateDownloaded && (
+            <button
+              onClick={() => {
+                // @ts-ignore
+                if (window.electronAPI && window.electronAPI.installUpdate) {
+                  // @ts-ignore
+                  window.electronAPI.installUpdate();
+                }
+              }}
+              className="bg-cyan-600 hover:bg-cyan-500 active:bg-cyan-700 text-white font-medium px-3 py-1 rounded-md transition-colors text-[11px] shadow-sm cursor-pointer"
+            >
+              Restart & Update
+            </button>
+          )}
+        </div>
+      )}
+
+      {showShortcuts && (
+        <div className="absolute inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowShortcuts(false)}>
+          <div className="bg-[#1e1e1e] border border-[#333] rounded-lg shadow-xl w-[400px] overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="px-4 py-3 border-b border-[#333] flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-200">Keyboard Shortcuts</h3>
+              <button onClick={() => setShowShortcuts(false)} className="text-gray-400 hover:text-white">✕</button>
+            </div>
+            <div className="p-4 space-y-3 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-400">Toggle File Tree</span>
+                <kbd className="bg-[#333] px-2 py-1 rounded text-xs font-mono">Ctrl + B</kbd>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Toggle Terminal</span>
+                <kbd className="bg-[#333] px-2 py-1 rounded text-xs font-mono">Ctrl + `</kbd>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Toggle AI Chat</span>
+                <kbd className="bg-[#333] px-2 py-1 rounded text-xs font-mono">Ctrl + L</kbd>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Settings</span>
+                <kbd className="bg-[#333] px-2 py-1 rounded text-xs font-mono">Ctrl + ,</kbd>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Explorer View</span>
+                <kbd className="bg-[#333] px-2 py-1 rounded text-xs font-mono">Ctrl + E</kbd>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">View Shortcuts</span>
+                <kbd className="bg-[#333] px-2 py-1 rounded text-xs font-mono">Ctrl + /</kbd>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 flex overflow-hidden">
         <ActivityBar activeView={activeView} onViewChange={setActiveView} />
         <PanelGroup orientation="horizontal">
-          <Panel defaultSize={200} minSize={100} maxSize={200} className="flex overflow-hidden">
+          <Panel
+            panelRef={fileTreePanelRef}
+            collapsible={true}
+            defaultSize={100}
+            minSize={120}
+            maxSize={200}
+            className="flex overflow-hidden"
+          >
             <FileTree
               projectPath={projectPath}
               onSelectFile={async (filePath, fileName) => {
@@ -289,15 +474,20 @@ if __name__ == "__main__":
           <PanelResizeHandle className="w-1.5 bg-surface hover:bg-primary active:bg-primary cursor-col-resize transition-colors" />
 
           {/*editor resizing*/}
-          <Panel defaultSize={500} minSize={400}>
+          <Panel defaultSize={55} minSize={30}>
             <PanelGroup orientation="vertical">
-              <Panel defaultSize={70} minSize={20}>
+              <Panel defaultSize={80} minSize={20}>
                 {renderCenterContent()}
               </Panel>
               <PanelResizeHandle className="h-1.5 bg-surface border-t border-border hover:bg-primary active:bg-primary cursor-row-resize transition-colors z-50" />
 
               {/* terminal resizing */}
-              <Panel defaultSize={10} minSize={10}>
+              <Panel
+                panelRef={terminalPanelRef}
+                collapsible={true}
+                defaultSize={20}
+                minSize={10}
+              >
                 {projectPath && <TerminalPanel projectPath={projectPath} />}
                 {!projectPath && (
                   <div className="w-full h-full bg-background border-t border-border flex items-center justify-center text-xs text-gray-500">
@@ -309,7 +499,14 @@ if __name__ == "__main__":
           </Panel>
           <PanelResizeHandle className="w-1.5 bg-surface hover:bg-primary active:bg-primary cursor-col-resize transition-colors" />
           {/* AI chat side bar resizing */}
-          <Panel defaultSize={300} minSize={200} maxSize={400} className="flex overflow-hidden">
+          <Panel
+            panelRef={aiChatPanelRef}
+            collapsible={true}
+            defaultSize={250}
+            minSize={200}
+            maxSize={400}
+            className="flex overflow-hidden"
+          >
             <Sidebar backendPort={backendPort}
               projectPath={projectPath}
               isIngesting={isIngesting}

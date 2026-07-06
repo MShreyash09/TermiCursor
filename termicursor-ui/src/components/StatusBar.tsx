@@ -1,4 +1,4 @@
-import { GitBranch, XCircle, CheckCircle, Download, AlertTriangle } from 'lucide-react';
+import { XCircle, CheckCircle, Download, AlertTriangle } from 'lucide-react';
 
 interface StatusBarProps {
   backendStatus: any;

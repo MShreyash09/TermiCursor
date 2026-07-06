@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Palette, Type, Terminal, Cpu } from 'lucide-react';
+import { Palette, Type, Terminal, Cpu, Keyboard } from 'lucide-react';
 
 interface SettingItemProps {
   label: string;
@@ -218,6 +218,42 @@ export default function SettingsPage() {
           label: 'Auto-Ingest on Open',
           description: 'Automatically ingest the codebase when a folder is opened',
           control: <Toggle checked={settings.autoIngest} onChange={(v) => updateSetting('autoIngest', v)} />,
+        },
+      ],
+    },
+    {
+      title: 'Keyboard Shortcuts',
+      icon: Keyboard,
+      items: [
+        {
+          label: 'Toggle File Tree (Sidebar)',
+          description: 'Shortcut to open or close the left sidebar',
+          control: <div className="px-3 py-1.5 bg-[#0b2b2d] border border-[#1a4042] rounded text-sm font-mono text-gray-300">Ctrl + B</div>,
+        },
+        {
+          label: 'Toggle Terminal',
+          description: 'Shortcut to open or close the bottom terminal panel',
+          control: <div className="px-3 py-1.5 bg-[#0b2b2d] border border-[#1a4042] rounded text-sm font-mono text-gray-300">Ctrl + `</div>,
+        },
+        {
+          label: 'Toggle AI Chat',
+          description: 'Shortcut to open or close the AI chat panel',
+          control: <div className="px-3 py-1.5 bg-[#0b2b2d] border border-[#1a4042] rounded text-sm font-mono text-gray-300">Ctrl + L</div>,
+        },
+        {
+          label: 'Open Settings',
+          description: 'Shortcut to quickly jump to this settings page',
+          control: <div className="px-3 py-1.5 bg-[#0b2b2d] border border-[#1a4042] rounded text-sm font-mono text-gray-300">Ctrl + ,</div>,
+        },
+        {
+          label: 'Explorer View',
+          description: 'Shortcut to quickly jump back to the Explorer view',
+          control: <div className="px-3 py-1.5 bg-[#0b2b2d] border border-[#1a4042] rounded text-sm font-mono text-gray-300">Ctrl + E</div>,
+        },
+        {
+          label: 'View Shortcuts',
+          description: 'Shortcut to open the quick shortcuts overview panel',
+          control: <div className="px-3 py-1.5 bg-[#0b2b2d] border border-[#1a4042] rounded text-sm font-mono text-gray-300">Ctrl + /</div>,
         },
       ],
     },

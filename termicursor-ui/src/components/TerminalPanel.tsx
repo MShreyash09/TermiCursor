@@ -63,8 +63,10 @@ export default function TerminalPanel({ projectPath }: TerminalPanelProps) {
         cyan: '#06b6d4',
         white: '#ffffff'
       },
-      fontFamily: currentFontFamily,
+      fontFamily: currentFontFamily ? `${currentFontFamily}, Consolas, 'Courier New', monospace` : "Consolas, 'Courier New', monospace",
       fontSize: currentFontSize,
+      letterSpacing: 0,
+      lineHeight: 1.2,
       cursorBlink: true,
     });
     
@@ -102,6 +104,12 @@ export default function TerminalPanel({ projectPath }: TerminalPanelProps) {
         if (ev.keyCode === 13) {
           // Enter
           term.write('\r\n');
+          
+          const cmdTrimmed = command.trim();
+          if (cmdTrimmed === 'clear' || cmdTrimmed === 'cls') {
+            term.clear();
+          }
+
           // @ts-ignore
           window.electronAPI.writeTerminal(command + '\r\n');
           command = '';

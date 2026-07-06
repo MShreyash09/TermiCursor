@@ -17,4 +17,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   spawnTerminal: (projectPath) => ipcRenderer.invoke('terminal:spawn', projectPath),
   writeTerminal: (data) => ipcRenderer.send('terminal:write', data),
   onTerminalData: (callback) => ipcRenderer.on('terminal:incomingData', (_event, value) => callback(value)),
+  onUpdateAvailable: (callback) => ipcRenderer.on('update-available', (_event, version) => callback(version)),
+  onUpdateDownloaded: (callback) => ipcRenderer.on('update-downloaded', () => callback()),
+  installUpdate: () => ipcRenderer.send('install-update'),
 });

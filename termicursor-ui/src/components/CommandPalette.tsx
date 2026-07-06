@@ -1,8 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Command } from 'cmdk';
-import { Settings, RefreshCw, Terminal, Search } from 'lucide-react';
+import { Settings, RefreshCw, Terminal, Search, Folder } from 'lucide-react';
 
-export default function CommandPalette() {
+interface CommandPaletteProps {
+  onToggleTerminal: () => void;
+  onToggleSidebar: () => void;
+  onOpenSettings: () => void;
+}
+
+export default function CommandPalette({ onToggleTerminal, onToggleSidebar, onOpenSettings }: CommandPaletteProps) {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -29,6 +35,7 @@ export default function CommandPalette() {
               autoFocus
               placeholder="Type a command or search..." 
               className="w-full bg-transparent border-none focus:outline-none text-gray-200 py-3 text-sm" 
+              id="command-palette-input"
             />
           </div>
           <Command.List className="max-h-[300px] overflow-y-auto p-2 scrollbar-thin scrollbar-thumb-[#333]">
@@ -43,16 +50,25 @@ export default function CommandPalette() {
                 Reload Window
               </Command.Item>
               <Command.Item 
+                onSelect={() => { onOpenSettings(); setOpen(false); }}
                 className="flex items-center gap-2 px-2 py-2 rounded-md cursor-pointer hover:bg-surface-hover text-gray-300 aria-selected:bg-surface-hover aria-selected:text-white"
               >
                 <Settings size={14} />
                 Open Settings
               </Command.Item>
               <Command.Item 
+                onSelect={() => { onToggleTerminal(); setOpen(false); }}
                 className="flex items-center gap-2 px-2 py-2 rounded-md cursor-pointer hover:bg-surface-hover text-gray-300 aria-selected:bg-surface-hover aria-selected:text-white"
               >
                 <Terminal size={14} />
                 Toggle Terminal
+              </Command.Item>
+              <Command.Item 
+                onSelect={() => { onToggleSidebar(); setOpen(false); }}
+                className="flex items-center gap-2 px-2 py-2 rounded-md cursor-pointer hover:bg-surface-hover text-gray-300 aria-selected:bg-surface-hover aria-selected:text-white"
+              >
+                <Folder size={14} />
+                Toggle File Tree Sidebar
               </Command.Item>
             </Command.Group>
           </Command.List>
@@ -61,3 +77,4 @@ export default function CommandPalette() {
     </div>
   );
 }
+

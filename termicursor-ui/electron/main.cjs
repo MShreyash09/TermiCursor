@@ -3,6 +3,13 @@ const path = require('path');
 const fs = require('fs/promises');
 const { spawn } = require('child_process');
 const net = require('net');
+const { autoUpdater } = require('electron-updater');
+const log = require('electron-log');
+
+// Setup logging for updates
+autoUpdater.logger = log;
+autoUpdater.logger.transports.file.level = 'info';
+
 
 let pythonProcess = null;
 let backendPort = 8000;
@@ -67,6 +74,20 @@ function createWindow() {
   });
   ipcMain.on('window-close', () => win.close());
 
+  // ── Auto-Updater Events & IPC Handlers ──
+  autoUpdater.on('update-available', (info) => {
+    win.webContents.send('update-available', info.version);
+  });
+
+  autoUpdater.on('update-downloaded', () => {
+    win.webContents.send('update-downloaded');
+  });
+
+  ipcMain.on('install-update', () => {
+    autoUpdater.quitAndInstall();
+  });
+
+
   // ── Terminal Handlers ──
   let ptyProcess = null;
   ipcMain.handle('terminal:spawn', (event, projectPath) => {
@@ -78,10 +99,10 @@ function createWindow() {
     });
     
     ptyProcess.stdout.on('data', (data) => {
-      win.webContents.send('terminal:incomingData', data.toString());
+      win.webContents.send('terminal:incomingData', data.toString().replace(/\x00/g, ''));
     });
     ptyProcess.stderr.on('data', (data) => {
-      win.webContents.send('terminal:incomingData', data.toString());
+      win.webContents.send('terminal:incomingData', data.toString().replace(/\x00/g, ''));
     });
     return true;
   });
@@ -212,6 +233,13 @@ function createWindow() {
   } else {
     win.loadFile(path.join(__dirname, '../dist/index.html'));
   }
+
+  // Trigger update check when window is ready to show
+  win.once('ready-to-show', () => {
+    autoUpdater.checkForUpdatesAndNotify().catch(err => {
+      log.error('Auto-update check failed: ', err);
+    });
+  });
 }
 
 app.whenReady().then(async () => {

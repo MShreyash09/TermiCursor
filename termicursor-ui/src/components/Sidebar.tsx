@@ -11,10 +11,12 @@ interface SidebarProps {
   backendPort?: number;
   projectPath: string;
   isIngesting?: boolean;
+  backendStatus?: any;
   onFilesCreated?: (files: string[]) => void;
 }
 
-export default function Sidebar({ projectPath, isIngesting, onFilesCreated, backendPort = 8000 }: SidebarProps) {
+export default function Sidebar({ projectPath, isIngesting, onFilesCreated, backendPort = 8000, backendStatus }: SidebarProps) {
+  const [selectedModel, setSelectedModel] = useState('');
   const [messages, setMessages] = useState<Message[]>([
     { role: 'assistant', content: "Hello! I am Termicursor. How can I help you with your codebase today?" }
   ]);
@@ -120,7 +122,7 @@ export default function Sidebar({ projectPath, isIngesting, onFilesCreated, back
   };
 
   return (
-    <div className="w-full h-full bg-surface border-l border-border flex flex-col pt-10 z-40">
+    <div className="w-full h-full bg-surface border-l border-border flex flex-col z-40">
 
       {/* Sidebar Header */}
       <div className="px-4 py-2 flex items-center justify-between border-b border-border shrink-0">
@@ -134,9 +136,49 @@ export default function Sidebar({ projectPath, isIngesting, onFilesCreated, back
         <div className="relative">
           <select 
             className="w-full bg-[#0a0a0a] text-xs text-gray-300 rounded-lg p-2 appearance-none border border-border focus:outline-none focus:border-primary cursor-pointer"
-            defaultValue="qwen"
+            value={selectedModel || (backendStatus?.available_models?.[0] || 'qwen')}
+            onChange={async (e) => {
+              const value = e.target.value;
+              const cloudModels = ['openai', 'claude', 'gemini', 'kimi', 'deepseek'];
+              if (cloudModels.includes(value)) {
+                // @ts-ignore
+                let loadedSettings: any = {};
+                // @ts-ignore
+                if (window.electronAPI && window.electronAPI.loadSettings) {
+                  // @ts-ignore
+                  loadedSettings = await window.electronAPI.loadSettings() || {};
+                }
+                const keyName = `${value}ApiKey`;
+                if (!loadedSettings[keyName]) {
+                  const apiKey = prompt(`API key not found for ${value}. Please enter your API key to use this model:`);
+                  if (apiKey) {
+                    loadedSettings[keyName] = apiKey;
+                    // @ts-ignore
+                    if (window.electronAPI && window.electronAPI.saveSettings) {
+                      // @ts-ignore
+                      await window.electronAPI.saveSettings(loadedSettings);
+                    }
+                    setSelectedModel(value);
+                  } else {
+                    // Revert selection
+                    e.target.value = selectedModel || (backendStatus?.available_models?.[0] || 'qwen');
+                  }
+                } else {
+                  setSelectedModel(value);
+                }
+              } else {
+                setSelectedModel(value);
+              }
+            }}
           >
-            <option value="qwen">Qwen 2.5 Coder (Local)</option>
+            {/* Dynamic Local Models from Ollama */}
+            {backendStatus?.available_models?.map((model: string) => (
+              <option key={model} value={model}>{model} (Local)</option>
+            ))}
+            {(!backendStatus?.available_models || backendStatus.available_models.length === 0) && (
+              <option value="qwen">Qwen 2.5 Coder (Local)</option>
+            )}
+            {/* Cloud Models */}
             <option value="openai">OpenAI GPT-4o</option>
             <option value="claude">Claude 3.5 Sonnet</option>
             <option value="gemini">Gemini 1.5 Pro</option>

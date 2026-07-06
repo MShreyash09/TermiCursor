@@ -145,9 +145,10 @@ def get_ollama_status():
                 "status": "error", 
                 "reason": "missing_models", 
                 "ollama_ready": True, 
-                "missing_models": missing
+                "missing_models": missing,
+                "available_models": models
             }
-        return {"status": "ok", "ollama_ready": True, "missing_models": []}
+        return {"status": "ok", "ollama_ready": True, "missing_models": [], "available_models": models}
     except requests.exceptions.ConnectionError:
         return {"status": "error", "reason": "connection_error", "ollama_ready": False, "missing_models": []}
 

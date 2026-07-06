@@ -2,15 +2,32 @@ import { Mail, MapPin, Calendar, ExternalLink, Edit3, Globe } from 'lucide-react
 import { useState } from 'react';
 
 export default function ProfilePage() {
+  const DEFAULT_PROFILE = {
+    name: 'Default User',
+    email: 'user@example.com',
+    location: 'Earth',
+    joinDate: new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+    bio: 'Ready to code with TermiCursor.',
+    github: '',
+  };
+
   const [isEditing, setIsEditing] = useState(false);
-  const [profile, setProfile] = useState({
-    name: 'Shreyash M.',
-    email: 'shreyash@example.com',
-    location: 'India',
-    joinDate: 'May 2026',
-    bio: 'Full-stack developer passionate about AI-powered developer tools.',
-    github: 'MShreyash09',
+  const [profile, setProfile] = useState<typeof DEFAULT_PROFILE>(() => {
+    const saved = localStorage.getItem('termicursor_profile');
+    return saved ? JSON.parse(saved) : DEFAULT_PROFILE;
   });
+
+  const handleSave = () => {
+    localStorage.setItem('termicursor_profile', JSON.stringify(profile));
+    setIsEditing(false);
+  };
+
+  const handleSignOut = () => {
+    if (confirm("Are you sure you want to sign out? This will reset your profile data to the default.")) {
+      localStorage.removeItem('termicursor_profile');
+      setProfile(DEFAULT_PROFILE);
+    }
+  };
 
   return (
     <div className="flex-1 h-full bg-[#031c1d] flex flex-col items-center pt-24 overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: '#424242 transparent' }}>
@@ -68,7 +85,7 @@ export default function ProfilePage() {
         {isEditing && (
           <div className="flex gap-3 px-4 mb-8">
             <button
-              onClick={() => setIsEditing(false)}
+              onClick={handleSave}
               className="flex-1 py-2 bg-[#1e4b4a] hover:bg-[#255c5a] text-white rounded border border-[#2b6b69] text-sm transition-colors cursor-pointer"
             >
               Save Changes
@@ -101,7 +118,10 @@ export default function ProfilePage() {
 
         {/* Sign Out */}
         <div className="px-4 mt-8 mb-12">
-          <button className="w-full py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded border border-red-500/20 text-sm transition-colors cursor-pointer">
+          <button 
+            onClick={handleSignOut}
+            className="w-full py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded border border-red-500/20 text-sm transition-colors cursor-pointer"
+          >
             Sign Out
           </button>
         </div>

@@ -250,6 +250,12 @@ if __name__ == "__main__":
             if (Array.isArray(updated)) setRecentFolders(updated);
           });
         }
+        
+        if (backendStatus?.missing_models && backendStatus.missing_models.length > 0) {
+          alert(`Missing Ollama models: ${backendStatus.missing_models.join(', ')}. They will be downloaded now. Please wait.`);
+          await handleInstallModels();
+        }
+
         setIsIngesting(true);
         try {
           const response = await fetch(`http://127.0.0.1:${backendPort}/ingest`, {
@@ -312,6 +318,12 @@ if __name__ == "__main__":
         if (Array.isArray(updated)) setRecentFolders(updated);
       });
     }
+
+    if (backendStatus?.missing_models && backendStatus.missing_models.length > 0) {
+      alert(`Missing Ollama models: ${backendStatus.missing_models.join(', ')}. They will be downloaded now. Please wait.`);
+      await handleInstallModels();
+    }
+
     setIsIngesting(true);
     try {
       const response = await fetch(`http://127.0.0.1:${backendPort}/ingest`, {
@@ -524,6 +536,7 @@ if __name__ == "__main__":
             <Sidebar backendPort={backendPort}
               projectPath={projectPath}
               isIngesting={isIngesting}
+              backendStatus={backendStatus}
               onFilesCreated={() => {
                 setFileTreeRefreshKey(prev => prev + 1);
               }}

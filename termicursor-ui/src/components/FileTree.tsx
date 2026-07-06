@@ -120,7 +120,7 @@ export default function FileTree({ projectPath, onSelectFile, onOpenFolder, refr
   }, [projectPath, refreshKey]);
 
   return (
-    <div className="w-full h-full bg-[#141414] border-r border-border flex flex-col pt-10 z-30 shadow-md">
+    <div className="w-full h-full bg-[#141414] border-r border-border flex flex-col z-30 shadow-md">
       <div className="px-4 py-2 flex items-center justify-between text-xs font-semibold tracking-widest text-gray-500 uppercase border-b border-border shrink-0">
         <span>Explorer</span>
         {projectPath && (

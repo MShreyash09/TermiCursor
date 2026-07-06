@@ -118,9 +118,9 @@ export default function EditorView({ openFiles, activeFilePath, onSelectFile, on
   };
 
   return (
-    <div className="flex-1 h-full pt-10 bg-background overflow-hidden relative">
+    <div className="flex-1 h-full bg-background overflow-hidden flex flex-col relative">
       {/* Tab bar */}
-      <div className="h-9 bg-surface border-b border-border flex items-center overflow-x-auto no-scrollbar">
+      <div className="h-9 shrink-0 bg-surface border-b border-border flex items-center overflow-x-auto no-scrollbar">
         {openFiles.map((file) => (
           <div
             key={file.path}
@@ -164,15 +164,16 @@ export default function EditorView({ openFiles, activeFilePath, onSelectFile, on
       </div>
       
       {activeFile && (
-        <div className="h-6 px-4 bg-background border-b border-border flex items-center text-[11px] text-gray-500 font-mono select-none">
+        <div className="h-6 shrink-0 px-4 bg-background border-b border-border flex items-center text-[11px] text-gray-500 font-mono select-none">
            <span>{activeFile.path.replace(/\\/g, '/')}</span>
         </div>
       )}
       
       {activeFile && (
-        <Editor
-          height="calc(100vh - 76px - 24px)"
-          theme="termicursor-dark"
+        <div className="flex-1 overflow-hidden relative">
+          <Editor
+            height="100%"
+            theme="termicursor-dark"
           language={language}
           value={content}
           onMount={handleEditorDidMount}
@@ -190,6 +191,7 @@ export default function EditorView({ openFiles, activeFilePath, onSelectFile, on
             scrollBeyondLastLine: false,
           }}
         />
+        </div>
       )}
 
       {/* ── Delete Confirmation Modal ── */}

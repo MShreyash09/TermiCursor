@@ -21,15 +21,15 @@ export default function WelcomeScreen({ onOpenFolder, recentFolders = [], onOpen
 
   return (
     <div className="relative flex-1 h-full flex flex-col items-center justify-center overflow-y-auto bg-[#050505]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#424242 transparent' }}>
-      
+
       {/* Background glow effects */}
       <div className="absolute top-[-20%] left-1/2 -translate-x-1/2 w-[800px] h-[600px] bg-cyan-900/10 blur-[120px] rounded-full pointer-events-none" />
       <div className="absolute bottom-[-20%] left-[-10%] w-[600px] h-[500px] bg-indigo-900/10 blur-[100px] rounded-full pointer-events-none" />
 
       <div className={`relative z-10 w-full max-w-4xl px-8 py-12 flex flex-col items-center transition-all duration-1000 transform ${mounted ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
-        
+
         {/* Logo & Title */}
-        <div className="flex flex-col items-center mb-12">
+        <div className="flex flex-col items-center mt-5">
           <div className="relative group mb-6">
             <div className="absolute inset-0 bg-cyan-400/20 blur-2xl rounded-full group-hover:bg-cyan-400/40 transition-all duration-700"></div>
             <div className="relative bg-gradient-to-br from-[#1a1a2e] to-[#0f3443] p-5 rounded-2xl border border-white/10 shadow-2xl">
@@ -40,7 +40,7 @@ export default function WelcomeScreen({ onOpenFolder, recentFolders = [], onOpen
             Termicursor IDE
           </h1>
           <p className="text-gray-400 text-lg max-w-lg text-center font-light">
-            The next generation agentic IDE.<br/>Code at the speed of thought.
+            The next generation agentic IDE.<br />Code at the speed of thought.
           </p>
         </div>
 

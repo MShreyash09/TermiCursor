@@ -437,7 +437,21 @@ if __name__ == "__main__":
       )}
 
       <div className="flex-1 flex overflow-hidden">
-        <ActivityBar activeView={activeView} onViewChange={setActiveView} />
+        <ActivityBar 
+          activeView={activeView} 
+          onViewChange={(view) => {
+            if (view === 'explorer') {
+              if (activeView === 'explorer') {
+                toggleFileTree();
+              } else {
+                setActiveView(view);
+                fileTreePanelRef.current?.expand();
+              }
+            } else {
+              setActiveView(view);
+            }
+          }} 
+        />
         <PanelGroup orientation="horizontal">
           <Panel
             panelRef={fileTreePanelRef}

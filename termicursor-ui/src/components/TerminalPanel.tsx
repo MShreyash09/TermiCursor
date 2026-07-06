@@ -14,7 +14,7 @@ export default function TerminalPanel({ projectPath }: TerminalPanelProps) {
   useEffect(() => {
     if (!terminalRef.current) return;
 
-    let currentFontFamily = "'Fira Code', monospace";
+    let currentFontFamily = "Consolas, 'Courier New', monospace";
     let currentFontSize = 13;
 
     // Load initial settings
@@ -25,7 +25,7 @@ export default function TerminalPanel({ projectPath }: TerminalPanelProps) {
         if (loaded) {
           if (loaded.fontFamily) currentFontFamily = loaded.fontFamily;
           if (loaded.fontSize) currentFontSize = parseInt(loaded.fontSize);
-          
+
           if (xtermRef.current) {
             xtermRef.current.options.fontFamily = currentFontFamily;
             xtermRef.current.options.fontSize = currentFontSize;
@@ -63,23 +63,34 @@ export default function TerminalPanel({ projectPath }: TerminalPanelProps) {
         cyan: '#06b6d4',
         white: '#ffffff'
       },
-      fontFamily: currentFontFamily ? `${currentFontFamily}, Consolas, 'Courier New', monospace` : "Consolas, 'Courier New', monospace",
+      fontFamily: currentFontFamily,
       fontSize: currentFontSize,
-      letterSpacing: 0,
-      lineHeight: 1.2,
+      letterSpacing: 1, // Use integer values for better rendering
+      lineHeight: 1.2, // Keep line-height > 1 to prevent text clipping
       cursorBlink: true,
+      // Optional: Use DOM renderer if Canvas text rendering looks weird
+      // rendererType: 'dom' 
     });
-    
+
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
-    
+
     term.open(terminalRef.current);
-    fitAddon.fit();
+    
+    // Wait for fonts to load before fitting to ensure correct character dimensions
+    document.fonts.ready.then(() => {
+      fitAddon.fit();
+    });
     xtermRef.current = term;
 
     // Window resize handling
     const resizeObserver = new ResizeObserver(() => {
-      fitAddon.fit();
+      // Use requestAnimationFrame to ensure the container layout has updated
+      requestAnimationFrame(() => {
+        if (term.element && term.element.clientWidth > 0) {
+          fitAddon.fit();
+        }
+      });
     });
     resizeObserver.observe(terminalRef.current);
 
@@ -88,13 +99,13 @@ export default function TerminalPanel({ projectPath }: TerminalPanelProps) {
     if (window.electronAPI?.spawnTerminal) {
       // @ts-ignore
       window.electronAPI.spawnTerminal(projectPath);
-      
+
       // Setup incoming data listener
       // @ts-ignore
       window.electronAPI.onTerminalData((data: string) => {
         term.write(data);
       });
-      
+
       // Implement local echo because child_process doesn't echo like a true PTY
       let command = '';
       term.onKey(({ key, domEvent }) => {
@@ -104,7 +115,7 @@ export default function TerminalPanel({ projectPath }: TerminalPanelProps) {
         if (ev.keyCode === 13) {
           // Enter
           term.write('\r\n');
-          
+
           const cmdTrimmed = command.trim();
           if (cmdTrimmed === 'clear' || cmdTrimmed === 'cls') {
             term.clear();

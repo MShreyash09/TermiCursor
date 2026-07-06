@@ -1,4 +1,4 @@
-import { Files, Search, Settings, User } from 'lucide-react';
+import { Files, Settings, User } from 'lucide-react';
 
 interface ActivityBarProps {
   activeView?: string;
@@ -8,7 +8,6 @@ interface ActivityBarProps {
 export default function ActivityBar({ activeView = 'explorer', onViewChange }: ActivityBarProps) {
   const topItems = [
     { id: 'explorer', icon: Files },
-    { id: 'search', icon: Search },
     // { id: 'git', icon: GitBranch },
     // { id: 'run', icon: Play },
     // { id: 'extensions', icon: Blocks },

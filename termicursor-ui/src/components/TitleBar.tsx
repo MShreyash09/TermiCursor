@@ -13,7 +13,7 @@ declare global {
 
 export default function TitleBar() {
   return (
-    <div className="titlebar-drag h-10 bg-[#121212] border-b border-[#2a2a2a] flex items-center justify-between px-4 fixed top-0 left-0 right-0 z-50">
+    <div className="titlebar-drag h-10 shrink-0 w-full bg-[#121212] border-b border-[#2a2a2a] flex items-center justify-between px-4 z-50">
       {/* App branding */}
       <div className="flex items-center gap-2.5">
         <div className="w-5 h-5 rounded-md bg-gradient-to-br from-cyan-400 to-violet-500 flex items-center justify-center shadow-lg shadow-cyan-500/20">

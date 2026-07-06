@@ -520,7 +520,7 @@ def single_shot_query(project_path, query_text):
     retriever = qdrant.as_retriever(search_kwargs={"k": 10}) 
     llm = get_llm()
 
-    prompt_template = """
+    prompt_template = f"""
     You are TermiCursor, an elite AI coding assistant.
     Use the following pieces of retrieved codebase context and your memory of past interactions to answer the user's question.
     If you don't know the answer or the context doesn't have it, say that you don't know.
@@ -550,11 +550,14 @@ def single_shot_query(project_path, query_text):
     [DELETE_FILE: main.py]
 
     Relevant Memory from Past Conversations:
-    {memories}
+    {{memories}}
 
-    Codebase Context: {context}
+    Project File Tree (Current Workspace Directory):
+    {get_project_tree(project_path)}
+
+    Codebase Context: {{context}}
     
-    Question: {question}
+    Question: {{question}}
     
     Answer:"""
     
@@ -586,6 +589,30 @@ def single_shot_query(project_path, query_text):
     except Exception as e:
         print(f"❌ Error executing query: {e}")
         return {"error": str(e)}
+
+def get_project_tree(project_path, max_depth=2, max_files=100):
+    try:
+        tree = []
+        num_files = 0
+        start_level = project_path.count(os.sep)
+        for root, dirs, files in os.walk(project_path):
+            dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ['node_modules', '__pycache__', 'venv', 'dist', 'build']]
+            level = root.count(os.sep) - start_level
+            if level > max_depth:
+                continue
+            indent = ' ' * 4 * level
+            tree.append(f"{indent}{os.path.basename(root) or root}/")
+            subindent = ' ' * 4 * (level + 1)
+            for f in files:
+                if not f.startswith('.'):
+                    tree.append(f"{subindent}{f}")
+                    num_files += 1
+                    if num_files >= max_files:
+                        tree.append(f"{subindent}... (truncated)")
+                        return "\n".join(tree)
+        return "\n".join(tree)
+    except Exception as e:
+        return f"Could not load file tree: {e}"
 
 async def async_stream_query(project_path, query_text):
     """
@@ -622,8 +649,11 @@ async def async_stream_query(project_path, query_text):
         source = doc.metadata.get("source", "unknown")
         source_files.add(source)
         context_parts.append(f"[File: {source}]\n{doc.page_content}")
-    context = "\\n\\n".join(context_parts)
-    file_list = "\\n".join(source_files)
+    context = "\n\n".join(context_parts)
+    file_list = "\n".join(source_files)
+    
+    # Get structural context
+    project_tree = get_project_tree(project_path)
     
     # Retrieve relevant memories for this query
     memory_context = get_memory_context(query_text)
@@ -645,7 +675,10 @@ You can output multiple [DELETE_FILE: <filename>] tags to delete multiple files.
 Relevant Memory from Past Conversations:
 {memory_context}
 
-Files found in the codebase:
+Project File Tree (Current Workspace Directory):
+{project_tree}
+
+Files found in the codebase (from RAG search):
 {file_list}
 
 Context: {context}

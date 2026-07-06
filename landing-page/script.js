@@ -91,3 +91,12 @@ window.addEventListener('mousemove', (e) => {
   if (glow1) glow1.style.transform = `translateX(calc(-50% + ${x}px)) translateY(${y}px)`;
   if (glow2) glow2.style.transform = `translateX(${-x * 0.5}px) translateY(${-y * 0.5}px)`;
 });
+
+// ── Download Tracking (Vercel Web Analytics) ──
+document.querySelectorAll('a[download]').forEach(link => {
+  link.addEventListener('click', () => {
+    if (typeof window.va === 'function') {
+      window.va('event', 'Download_TermiCursor');
+    }
+  });
+});

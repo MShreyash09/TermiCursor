@@ -2,6 +2,11 @@
 
 TermiCursor is an fully offline, GUI based AI assistant designed to run Retrieval-Augmented Generation (RAG) over local codebases using local models. It guarantees complete privacy by processing all code files, embeddings, and inference locally on your PC.
 
+## 🚀 Download
+
+You can download the latest Windows installer for TermiCursor here:
+**[Download TermiCursor Setup (v0.0.0)](https://github.com/MShreyash09/TermiCursor/releases/download/v0.0.0/Termicursor.Setup.0.0.0.exe)**
+
 ---
 
 ##  Architecture Overview
@@ -97,6 +102,3 @@ python main.py query . "Explain the validate_ollama_status function."
 # 7. Launch the interactive prompt session
 python main.py chat .
 ```
-<!-- 
-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 
--->

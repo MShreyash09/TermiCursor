@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, Terminal, Loader2, ChevronDown } from 'lucide-react';
+import { Send, Terminal, Loader2, ChevronDown, Square } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
 interface Message {
@@ -21,14 +21,45 @@ export default function Sidebar({ projectPath, isIngesting, onFilesCreated, back
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-
   const wsRef = useRef<WebSocket | null>(null);
+  const [settings, setSettings] = useState<any>({ customProviders: [] });
+
+  useEffect(() => {
+    // @ts-ignore
+    if (window.electronAPI && window.electronAPI.loadSettings) {
+      // @ts-ignore
+      window.electronAPI.loadSettings().then(loaded => {
+        if (loaded && Object.keys(loaded).length > 0) {
+          setSettings(loaded);
+        }
+      });
+    }
+  }, []);
+
+  const handleProviderChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newProvider = e.target.value;
+    const newSettings = { ...settings, llmProvider: newProvider };
+    setSettings(newSettings);
+    // @ts-ignore
+    if (window.electronAPI && window.electronAPI.saveSettings) {
+      // @ts-ignore
+      window.electronAPI.saveSettings(newSettings);
+    }
+  };
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
+
+  const handleStop = () => {
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+    setIsTyping(false);
+  };
 
   const handleSend = () => {
     if (!input.trim()) return;
@@ -134,14 +165,14 @@ export default function Sidebar({ projectPath, isIngesting, onFilesCreated, back
         <div className="relative">
           <select 
             className="w-full bg-[#0a0a0a] text-xs text-gray-300 rounded-lg p-2 appearance-none border border-border focus:outline-none focus:border-primary cursor-pointer"
-            defaultValue="qwen"
+            value={settings.llmProvider || 'ollama'}
+            onChange={handleProviderChange}
           >
-            <option value="qwen">Qwen 2.5 Coder (Local)</option>
-            <option value="openai">OpenAI GPT-4o</option>
-            <option value="claude">Claude 3.5 Sonnet</option>
-            <option value="gemini">Gemini 1.5 Pro</option>
-            <option value="kimi">Kimi</option>
-            <option value="deepseek">DeepSeek Coder</option>
+            <option value="ollama">Ollama (Local)</option>
+            {settings.groqApiKey && <option value="groq">Groq</option>}
+            {(settings.customProviders || []).map((provider: any, idx: number) => (
+              <option key={idx} value={provider.name}>{provider.name}</option>
+            ))}
           </select>
           <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-400">
             <ChevronDown size={14} />
@@ -199,13 +230,22 @@ export default function Sidebar({ projectPath, isIngesting, onFilesCreated, back
             className="w-full bg-transparent pl-4 pr-10 py-3 text-sm resize-none focus:outline-none text-gray-200 placeholder-gray-500 custom-scrollbar"
             rows={2}
           />
-          <button
-            onClick={handleSend}
-            disabled={!input.trim() || isTyping || isIngesting}
-            className="absolute right-2 bottom-2 p-1.5 text-gray-400 hover:text-gray-200 disabled:opacity-50 transition-colors"
-          >
-            <Send size={16} />
-          </button>
+          {isTyping ? (
+            <button
+              onClick={handleStop}
+              className="absolute right-2 bottom-2 p-1.5 text-red-400 hover:text-red-200 transition-colors"
+            >
+              <Square size={16} fill="currentColor" />
+            </button>
+          ) : (
+            <button
+              onClick={handleSend}
+              disabled={!input.trim() || isIngesting}
+              className="absolute right-2 bottom-2 p-1.5 text-gray-400 hover:text-gray-200 disabled:opacity-50 transition-colors"
+            >
+              <Send size={16} />
+            </button>
+          )}
         </div>
         <div className="mt-2 text-center">
           <span className="text-[10px] text-gray-600">AI may make mistakes. Double-check all generated code.</span>

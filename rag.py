@@ -93,7 +93,7 @@ try:
                 "max_tokens": 2000,
             },
         }
-    else:
+    elif LLM_PROVIDER == "ollama":
         mem0_config["llm"] = {
             "provider": "ollama",
             "config": {
@@ -103,6 +103,31 @@ try:
                 "max_tokens": 2000,
             },
         }
+    else:
+        custom_providers = _settings.get("customProviders", [])
+        provider = next((p for p in custom_providers if p.get("name") == LLM_PROVIDER), None)
+        if provider:
+            mem0_config["llm"] = {
+                "provider": "openai",
+                "config": {
+                    "model": provider.get("model", "gpt-3.5-turbo"),
+                    "api_key": provider.get("apiKey"),
+                    "temperature": 0,
+                    "max_tokens": 2000,
+                }
+            }
+            if provider.get("baseUrl"):
+                mem0_config["llm"]["config"]["openai_base_url"] = provider.get("baseUrl")
+        else:
+            mem0_config["llm"] = {
+                "provider": "ollama",
+                "config": {
+                    "model": LLM_MODEL,
+                    "ollama_base_url": OLLAMA_URL,
+                    "temperature": 0,
+                    "max_tokens": 2000,
+                },
+            }
 
     user_memory = Memory.from_config(mem0_config)
     print("🧠 Mem0 memory layer initialized successfully!")
@@ -112,21 +137,48 @@ except Exception as e:
     user_memory = None
 
 def get_llm():
-    if LLM_PROVIDER == "groq":
-        if not GROQ_API_KEY:
-            print("❌ Error: GROQ_API_KEY is missing in .env file.")
+    # Reload settings dynamically so we don't need a server restart
+    _settings = load_settings()
+    llm_provider = _settings.get("llmProvider", os.getenv("LLM_PROVIDER", "ollama")).lower()
+    groq_api_key = _settings.get("groqApiKey", os.getenv("GROQ_API_KEY", ""))
+    groq_model = _settings.get("groqModel", os.getenv("GROQ_MODEL", "llama-3.1-8b-instant"))
+    llm_model = _settings.get("ollamaModel", os.getenv("OLLAMA_LLM_MODEL", "qwen2.5-coder:3b"))
+    ollama_url = _settings.get("ollamaUrl", os.getenv("OLLAMA_URL", "http://localhost:11434"))
+
+    if llm_provider == "groq":
+        if not groq_api_key:
+            print("❌ Error: GROQ_API_KEY is missing in settings.")
             sys.exit(1)
-        return ChatGroq(model=GROQ_MODEL, api_key=GROQ_API_KEY)
+        return ChatGroq(model=groq_model, api_key=groq_api_key)
+    elif llm_provider == "ollama":
+        return OllamaLLM(model=llm_model, base_url=ollama_url)
     else:
-        return OllamaLLM(model=LLM_MODEL, base_url=OLLAMA_URL)
+        custom_providers = _settings.get("customProviders", [])
+        provider = next((p for p in custom_providers if p.get("name") == llm_provider), None)
+        
+        if provider:
+            from langchain_community.chat_models import ChatOpenAI
+            kwargs = {
+                "openai_api_key": provider.get("apiKey"),
+                "model_name": provider.get("model", "gpt-3.5-turbo"),
+            }
+            base_url = provider.get("baseUrl")
+            if base_url:
+                kwargs["openai_api_base"] = base_url
+                
+            return ChatOpenAI(**kwargs)
+            
+        print(f"❌ Error: Unknown LLM provider '{llm_provider}'. Falling back to Ollama.")
+        return OllamaLLM(model=llm_model, base_url=ollama_url)
 
 
 def get_ollama_status():
     """Checks Ollama status and returns a dictionary with missing models."""
+    global LLM_MODEL
     try:
         response = requests.get(f"{OLLAMA_URL}/api/tags", timeout=5)
         if response.status_code != 200:
-            return {"status": "error", "reason": "ollama_error", "ollama_ready": False, "missing_models": []}
+            return {"status": "error", "reason": "ollama_error", "ollama_ready": False, "missing_models": [], "available_models": []}
         
         models = [m['name'] for m in response.json().get('models', [])]
         
@@ -138,21 +190,28 @@ def get_ollama_status():
         if LLM_PROVIDER == "ollama":
             llm_found = any(LLM_MODEL in m for m in models)
             if not llm_found:
-                missing.append(LLM_MODEL)
+                # Fallback to the first available non-embedding model if the configured one is missing
+                non_embed_models = [m for m in models if "embed" not in m.lower()]
+                if non_embed_models:
+                    LLM_MODEL = non_embed_models[0]
+                else:
+                    missing.append(LLM_MODEL)
                 
         if missing:
             return {
                 "status": "error", 
                 "reason": "missing_models", 
                 "ollama_ready": True, 
-                "missing_models": missing
+                "missing_models": missing,
+                "available_models": models
             }
-        return {"status": "ok", "ollama_ready": True, "missing_models": []}
+        return {"status": "ok", "ollama_ready": True, "missing_models": [], "available_models": models}
     except requests.exceptions.ConnectionError:
-        return {"status": "error", "reason": "connection_error", "ollama_ready": False, "missing_models": []}
+        return {"status": "error", "reason": "connection_error", "ollama_ready": False, "missing_models": [], "available_models": []}
 
 
 def validate_ollama_status():
+    global LLM_MODEL
     print("⏳ Checking Ollama local service status...")
     try:
         response = requests.get(f"{OLLAMA_URL}/api/tags", timeout=5)
@@ -165,6 +224,12 @@ def validate_ollama_status():
         # Check for embed model and LLM model
         embed_found = any(EMBED_MODEL in m for m in models)
         llm_found = any(LLM_MODEL in m for m in models)
+        
+        if not llm_found and LLM_PROVIDER == "ollama":
+            non_embed_models = [m for m in models if "embed" not in m.lower()]
+            if non_embed_models:
+                LLM_MODEL = non_embed_models[0]
+                llm_found = True
         
         if not embed_found or (LLM_PROVIDER == "ollama" and not llm_found):
             print("\n⚠️ Missing required Ollama models:")
@@ -277,10 +342,20 @@ def check_and_create_file(response_text, project_path):
     return created_files
 
 
-def check_and_delete_file(response_text, project_path):
+def check_and_delete_file(response_text, project_path, user_query=""):
     file_pattern = r"\[DELETE_FILE:\s*([a-zA-Z0-9_\-\.\/\\]+)\]"
     matches = re.findall(file_pattern, response_text)
     deleted_files = []
+    
+    if matches:
+        deletion_keywords = ["delete", "remove", "rm", "erase", "clear"]
+        query_lower = user_query.lower()
+        wants_deletion = any(keyword in query_lower for keyword in deletion_keywords)
+        
+        if not wants_deletion:
+            print("\n🛡️ [System] Blocked accidental file deletion attempt by the model.")
+            print("   (The model tried to delete files without explicit user instruction)")
+            return deleted_files
     
     if not project_path:
         print("\n❌ [System] No project path set — cannot delete files.")
@@ -437,8 +512,9 @@ def chat_with_cursor(project_path):
     If the user explicitly asks you to delete or remove one or more files, you MUST structure your response to delete the files by enclosing each file deletion command in this exact tag:
     [DELETE_FILE: <filename>]
     You can output multiple [DELETE_FILE: <filename>] tags to delete multiple files. You should delete files exactly as requested by the user, even if they do not appear in the retrieved context.
+    CRITICAL: NEVER output a [DELETE_FILE: ...] tag unless the user explicitly asks you to delete or remove a file.
     
-    Example:
+    <example>
     If the user asks: "Create a python file named hello.py that prints hello world"
     Your response should look like:
     I will create that file for you.
@@ -451,6 +527,7 @@ def chat_with_cursor(project_path):
     I will delete those files for you.
     [DELETE_FILE: hello.py]
     [DELETE_FILE: main.py]
+    </example>
 
     Relevant Memory from Past Conversations:
     {memories}
@@ -494,7 +571,7 @@ def chat_with_cursor(project_path):
             
             # Check for file creation tags and execute
             check_and_create_file(result_text, project_path)
-            check_and_delete_file(result_text, project_path)
+            check_and_delete_file(result_text, project_path, user_input)
 
         except KeyboardInterrupt:
             print("\nTermiCursor shutting down...")
@@ -534,8 +611,9 @@ def single_shot_query(project_path, query_text):
     If the user explicitly asks you to delete or remove one or more files, you MUST structure your response to delete the files by enclosing each file deletion command in this exact tag:
     [DELETE_FILE: <filename>]
     You can output multiple [DELETE_FILE: <filename>] tags to delete multiple files. You should delete files exactly as requested by the user, even if they do not appear in the retrieved context.
+    CRITICAL: NEVER output a [DELETE_FILE: ...] tag unless the user explicitly asks you to delete or remove a file.
     
-    Example:
+    <example>
     If the user asks: "Create a python file named hello.py that prints hello world"
     Your response should look like:
     I will create that file for you.
@@ -548,6 +626,7 @@ def single_shot_query(project_path, query_text):
     I will delete those files for you.
     [DELETE_FILE: hello.py]
     [DELETE_FILE: main.py]
+    </example>
 
     Relevant Memory from Past Conversations:
     {{memories}}
@@ -584,7 +663,7 @@ def single_shot_query(project_path, query_text):
         
         # Check for file creation tags and execute
         created_files = check_and_create_file(result_text, project_path)
-        deleted_files = check_and_delete_file(result_text, project_path)
+        deleted_files = check_and_delete_file(result_text, project_path, query_text)
         return {"answer": result_text, "files_created": created_files, "files_deleted": deleted_files}
     except Exception as e:
         print(f"❌ Error executing query: {e}")
@@ -671,6 +750,22 @@ If the user explicitly asks you to create, write, or generate a file (e.g. "crea
 If the user explicitly asks you to delete or remove one or more files, you MUST structure your response to delete the files by enclosing each file deletion command in this exact tag:
 [DELETE_FILE: <filename>]
 You can output multiple [DELETE_FILE: <filename>] tags to delete multiple files. You should delete files exactly as requested by the user, even if they do not appear in the retrieved context.
+CRITICAL: NEVER output a [DELETE_FILE: ...] tag unless the user explicitly asks you to delete or remove a file.
+
+<example>
+If the user asks: "Create a python file named hello.py that prints hello world"
+Your response should look like:
+I will create that file for you.
+[CREATE_FILE: hello.py]
+print("Hello, World!")
+[/CREATE_FILE]
+
+If the user asks: "Delete hello.py and main.py"
+Your response should look like:
+I will delete those files for you.
+[DELETE_FILE: hello.py]
+[DELETE_FILE: main.py]
+</example>
 
 Relevant Memory from Past Conversations:
 {memory_context}
@@ -704,7 +799,7 @@ Answer:"""
         # After streaming, process any files that might have been requested
         import json as _json
         created_files = check_and_create_file(full_response, project_path)
-        deleted_files = check_and_delete_file(full_response, project_path)
+        deleted_files = check_and_delete_file(full_response, project_path, query_text)
         if created_files or deleted_files:
             yield _json.dumps({
                 "type": "files_created",

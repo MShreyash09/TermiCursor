@@ -514,36 +514,7 @@ def chat_with_cursor(project_path):
     llm = get_llm()
 
     prompt_template = """
-    You are TermiCursor, an elite AI coding assistant.
-    Use the following pieces of retrieved codebase context and your memory of past interactions to answer the user's question.
-    If you don't know the answer or the context doesn't have it, say that you don't know.
-    Write clean, efficient code. And handle simple small talk like reply hello I am
-    TermiCursor when asked and thankyou for using TermiCursor when user say bye and stop the terminal chat.
-    
-    If the user explicitly asks you to create, write, or generate a file (e.g. "create a python file named app.py and write code"), you MUST structure your response to write the file by enclosing the file creation command and content in these exact tags:
-    [CREATE_FILE: <filename>]
-    <file_contents>
-    [/CREATE_FILE]
-
-    If the user explicitly asks you to delete or remove one or more files, you MUST structure your response to delete the files by enclosing each file deletion command in this exact tag:
-    [DELETE_FILE: <filename>]
-    You can output multiple [DELETE_FILE: <filename>] tags to delete multiple files. You should delete files exactly as requested by the user, even if they do not appear in the retrieved context.
-    CRITICAL: NEVER output a [DELETE_FILE: ...] tag unless the user explicitly asks you to delete or remove a file.
-    
-    <example>
-    If the user asks: "Create a python file named hello.py that prints hello world"
-    Your response should look like:
-    I will create that file for you.
-    [CREATE_FILE: hello.py]
-    print("Hello, World!")
-    [/CREATE_FILE]
-
-    If the user asks: "Delete hello.py and main.py"
-    Your response should look like:
-    I will delete those files for you.
-    [DELETE_FILE: hello.py]
-    [DELETE_FILE: main.py]
-    </example>
+    {guardrail}
 
     Relevant Memory from Past Conversations:
     {memories}
@@ -554,7 +525,7 @@ def chat_with_cursor(project_path):
     
     Answer:"""
     
-    PROMPT = PromptTemplate(template=prompt_template, input_variables=["context", "question", "memories"])
+    PROMPT = PromptTemplate(template=prompt_template, input_variables=["guardrail", "context", "question", "memories"])
 
     qa_chain = RetrievalQA.from_chain_type(
         llm=llm,
@@ -578,11 +549,17 @@ def chat_with_cursor(project_path):
             
             # Retrieve relevant memories
             memory_context = get_memory_context(user_input)
+            dynamic_guardrail = get_dynamic_guardrail(user_input)
             
             print("🤖 TermiCursor is thinking...")
             langfuse_handler = get_langfuse_handler(session_id=f"cli_{collection_name}_{chat_id}", user_id="default_user", tags=["cli"])
             config = {"callbacks": [langfuse_handler], "run_name": "TermiCursor_Chat_Turn"} if langfuse_handler else {}
-            response = qa_chain.invoke({"query": user_input, "memories": memory_context}, config=config)
+            
+            response = qa_chain.invoke({
+                "query": user_input, 
+                "memories": memory_context, 
+                "guardrail": dynamic_guardrail
+            }, config=config)
             result_text = response["result"]
             print("\n" + result_text)
             print("\n" + "-"*40 + "\n")
@@ -620,56 +597,35 @@ def single_shot_query(project_path, query_text):
     retriever = qdrant.as_retriever(search_kwargs={"k": 10}) 
     llm = get_llm()
 
-    system_prompt_template = f"""
-    You are TermiCursor, an elite AI coding assistant.
-    Use the following pieces of retrieved codebase context and your memory of past interactions to answer the user's question.
-    If you don't know the answer or the context doesn't have it, say that you don't know.
-    Write clean, efficient code.
-
-    If the user explicitly asks you to create, write, or generate a file (e.g. "create a python file named app.py and write code"), you MUST structure your response to write the file by enclosing the file creation command and content in these exact tags:
-    [CREATE_FILE: <filename>]
-    <file_contents>
-    [/CREATE_FILE]
-
-    If the user explicitly asks you to delete or remove one or more files, you MUST structure your response to delete the files by enclosing each file deletion command in this exact tag:
-    [DELETE_FILE: <filename>]
-    You can output multiple [DELETE_FILE: <filename>] tags to delete multiple files. You should delete files exactly as requested by the user, even if they do not appear in the retrieved context.
-    CRITICAL: NEVER output a [DELETE_FILE: ...] tag unless the user explicitly asks you to delete or remove a file.
+    project_tree_str = get_project_tree(project_path)
     
-    <example>
-    If the user asks: "Create a python file named hello.py that prints hello world"
-    Your response should look like:
-    I will create that file for you.
-    [CREATE_FILE: hello.py]
-    print("Hello, World!")
-    [/CREATE_FILE]
-
-    If the user asks: "Delete hello.py and main.py"
-    Your response should look like:
-    I will delete those files for you.
-    [DELETE_FILE: hello.py]
-    [DELETE_FILE: main.py]
-    </example>
+    dynamic_guardrail = get_dynamic_guardrail(query_text)
+    prompt_template = f"""{dynamic_guardrail}
 
     Relevant Memory from Past Conversations:
     {{memories}}
 
     Project File Tree (Current Workspace Directory):
-    {get_project_tree(project_path)}
+    {project_tree_str}
 
     Codebase Context: {{context}}
-    """
+    
+    Question: {{question}}
+    
+    Answer:"""
+    
+    PROMPT = PromptTemplate(template=prompt_template, input_variables=["context", "question", "memories"])
     
     from langchain_core.language_models.chat_models import BaseChatModel
     if isinstance(llm, BaseChatModel) or "Chat" in type(llm).__name__:
         from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
         PROMPT = ChatPromptTemplate.from_messages([
-            SystemMessagePromptTemplate.from_template(system_prompt_template),
+            SystemMessagePromptTemplate.from_template(prompt_template),
             HumanMessagePromptTemplate.from_template("Question: {question}\n\nAnswer:")
         ])
     else:
-        full_prompt_template = system_prompt_template + "\n    Question: {question}\n    \n    Answer:"
-        PROMPT = PromptTemplate(template=full_prompt_template, input_variables=["context", "question", "memories"])
+        # Re-initialize prompt for non-chat models
+        PROMPT = PromptTemplate(template=prompt_template + "\n    Question: {question}\n    \n    Answer:", input_variables=["context", "question", "memories"])
 
     qa_chain = RetrievalQA.from_chain_type(
         llm=llm,
@@ -686,7 +642,11 @@ def single_shot_query(project_path, query_text):
         chat_id = str(uuid.uuid4())[:8]
         langfuse_handler = get_langfuse_handler(session_id=f"single_{collection_name}_{chat_id}", user_id="default_user", tags=["single_shot"])
         config = {"callbacks": [langfuse_handler], "run_name": "TermiCursor_Single_Shot"} if langfuse_handler else {}
-        response = qa_chain.invoke({"query": query_text, "memories": memory_context}, config=config)
+        
+        response = qa_chain.invoke({
+            "query": query_text, 
+            "memories": memory_context
+        }, config=config)
         result_text = response["result"]
         print("\n" + result_text)
         
@@ -774,38 +734,11 @@ async def async_stream_query(project_path, query_text):
     
     # Retrieve relevant memories for this query
     memory_context = get_memory_context(query_text)
+    dynamic_guardrail = get_dynamic_guardrail(query_text)
 
     llm = get_llm()
 
-    system_content = f"""You are TermiCursor, an elite AI coding assistant.
-Use the following pieces of retrieved codebase context and your memory of past interactions to answer the user's question.
-If you don't know the answer or the context doesn't have it, say that you don't know.
-Write clean, efficient code.
-
-If the user explicitly asks you to create, write, or generate a file (e.g. "create a python file named app.py and write code"), you MUST structure your response to write the file by enclosing the file creation command and content in these exact tags:
-[CREATE_FILE: <filename>]
-<file_contents>
-[/CREATE_FILE]
-
-If the user explicitly asks you to delete or remove one or more files, you MUST structure your response to delete the files by enclosing each file deletion command in this exact tag:
-[DELETE_FILE: <filename>]
-You can output multiple [DELETE_FILE: <filename>] tags to delete multiple files. You should delete files exactly as requested by the user, even if they do not appear in the retrieved context.
-CRITICAL: NEVER output a [DELETE_FILE: ...] tag unless the user explicitly asks you to delete or remove a file.
-
-<example>
-If the user asks: "Create a python file named hello.py that prints hello world"
-Your response should look like:
-I will create that file for you.
-[CREATE_FILE: hello.py]
-print("Hello, World!")
-[/CREATE_FILE]
-
-If the user asks: "Delete hello.py and main.py"
-Your response should look like:
-I will delete those files for you.
-[DELETE_FILE: hello.py]
-[DELETE_FILE: main.py]
-</example>
+    system_content = f"""{dynamic_guardrail}
 
 Relevant Memory from Past Conversations:
 {memory_context}

@@ -14,6 +14,13 @@ if sys.platform.startswith('win'):
     except AttributeError:
         pass
 
+from dotenv import load_dotenv
+load_dotenv()
+
+# Map LANGFUSE_BASE_URL to LANGFUSE_HOST if present
+if os.getenv("LANGFUSE_BASE_URL") and not os.getenv("LANGFUSE_HOST"):
+    os.environ["LANGFUSE_HOST"] = os.getenv("LANGFUSE_BASE_URL")
+
 from langchain_community.document_loaders.generic import GenericLoader
 from langchain_community.document_loaders.parsers import LanguageParser
 from langchain_text_splitters import RecursiveCharacterTextSplitter, Language
@@ -25,10 +32,19 @@ from langchain_qdrant import QdrantVectorStore
 from langchain_classic.chains import RetrievalQA
 from langchain_classic.prompts import PromptTemplate
 from langchain_groq import ChatGroq
-from dotenv import load_dotenv
 from qdrant_client import QdrantClient
+from langfuse.langchain import CallbackHandler
 
-load_dotenv()
+import uuid
+import langfuse
+
+def get_langfuse_handler(session_id=None, user_id=None, tags=None):
+    # Initializes using LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_HOST from env
+    try:
+        return CallbackHandler(session_id=session_id, user_id=user_id, tags=tags)
+    except Exception as e:
+        print(f"⚠️ Langfuse not configured or error initializing: {e}")
+        return None
 
 # AppData location for packaged apps
 APP_DATA_DIR = os.getenv("TERMICURSOR_USER_DATA")
@@ -548,11 +564,14 @@ def chat_with_cursor(project_path):
     )
 
     # Interactive Loop
+    chat_id = str(uuid.uuid4())[:8]
     while True:
         try:
             user_input = input("You ❯ ")
             if user_input.lower() in ['exit', 'quit']:
                 print("TermiCursor shutting down...")
+                if 'langfuse_handler' in locals() and langfuse_handler:
+                    langfuse_handler.flush()
                 break
             if not user_input.strip():
                 continue
@@ -561,7 +580,9 @@ def chat_with_cursor(project_path):
             memory_context = get_memory_context(user_input)
             
             print("🤖 TermiCursor is thinking...")
-            response = qa_chain.invoke({"query": user_input, "memories": memory_context})
+            langfuse_handler = get_langfuse_handler(session_id=f"cli_{collection_name}_{chat_id}", user_id="default_user", tags=["cli"])
+            config = {"callbacks": [langfuse_handler], "run_name": "TermiCursor_Chat_Turn"} if langfuse_handler else {}
+            response = qa_chain.invoke({"query": user_input, "memories": memory_context}, config=config)
             result_text = response["result"]
             print("\n" + result_text)
             print("\n" + "-"*40 + "\n")
@@ -575,6 +596,8 @@ def chat_with_cursor(project_path):
 
         except KeyboardInterrupt:
             print("\nTermiCursor shutting down...")
+            if 'langfuse_handler' in locals() and langfuse_handler:
+                langfuse_handler.flush()
             break
 
 def single_shot_query(project_path, query_text):
@@ -597,7 +620,7 @@ def single_shot_query(project_path, query_text):
     retriever = qdrant.as_retriever(search_kwargs={"k": 10}) 
     llm = get_llm()
 
-    prompt_template = f"""
+    system_prompt_template = f"""
     You are TermiCursor, an elite AI coding assistant.
     Use the following pieces of retrieved codebase context and your memory of past interactions to answer the user's question.
     If you don't know the answer or the context doesn't have it, say that you don't know.
@@ -635,12 +658,18 @@ def single_shot_query(project_path, query_text):
     {get_project_tree(project_path)}
 
     Codebase Context: {{context}}
+    """
     
-    Question: {{question}}
-    
-    Answer:"""
-    
-    PROMPT = PromptTemplate(template=prompt_template, input_variables=["context", "question", "memories"])
+    from langchain_core.language_models.chat_models import BaseChatModel
+    if isinstance(llm, BaseChatModel) or "Chat" in type(llm).__name__:
+        from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
+        PROMPT = ChatPromptTemplate.from_messages([
+            SystemMessagePromptTemplate.from_template(system_prompt_template),
+            HumanMessagePromptTemplate.from_template("Question: {question}\n\nAnswer:")
+        ])
+    else:
+        full_prompt_template = system_prompt_template + "\n    Question: {question}\n    \n    Answer:"
+        PROMPT = PromptTemplate(template=full_prompt_template, input_variables=["context", "question", "memories"])
 
     qa_chain = RetrievalQA.from_chain_type(
         llm=llm,
@@ -654,7 +683,10 @@ def single_shot_query(project_path, query_text):
 
     print("🤖 TermiCursor is thinking...")
     try:
-        response = qa_chain.invoke({"query": query_text, "memories": memory_context})
+        chat_id = str(uuid.uuid4())[:8]
+        langfuse_handler = get_langfuse_handler(session_id=f"single_{collection_name}_{chat_id}", user_id="default_user", tags=["single_shot"])
+        config = {"callbacks": [langfuse_handler], "run_name": "TermiCursor_Single_Shot"} if langfuse_handler else {}
+        response = qa_chain.invoke({"query": query_text, "memories": memory_context}, config=config)
         result_text = response["result"]
         print("\n" + result_text)
         
@@ -664,9 +696,15 @@ def single_shot_query(project_path, query_text):
         # Check for file creation tags and execute
         created_files = check_and_create_file(result_text, project_path)
         deleted_files = check_and_delete_file(result_text, project_path, query_text)
+        
+        if langfuse_handler:
+            langfuse_handler.flush()
+            
         return {"answer": result_text, "files_created": created_files, "files_deleted": deleted_files}
     except Exception as e:
         print(f"❌ Error executing query: {e}")
+        if 'langfuse_handler' in locals() and langfuse_handler:
+            langfuse_handler.flush()
         return {"error": str(e)}
 
 def get_project_tree(project_path, max_depth=2, max_files=100):
@@ -737,7 +775,9 @@ async def async_stream_query(project_path, query_text):
     # Retrieve relevant memories for this query
     memory_context = get_memory_context(query_text)
 
-    prompt_template = f"""You are TermiCursor, an elite AI coding assistant.
+    llm = get_llm()
+
+    system_content = f"""You are TermiCursor, an elite AI coding assistant.
 Use the following pieces of retrieved codebase context and your memory of past interactions to answer the user's question.
 If you don't know the answer or the context doesn't have it, say that you don't know.
 Write clean, efficient code.
@@ -776,18 +816,25 @@ Project File Tree (Current Workspace Directory):
 Files found in the codebase (from RAG search):
 {file_list}
 
-Context: {context}
+Context: {context}"""
 
-Question: {query_text}
-
-Answer:"""
-
-    llm = get_llm()
+    from langchain_core.language_models.chat_models import BaseChatModel
+    if isinstance(llm, BaseChatModel) or "Chat" in type(llm).__name__:
+        from langchain_core.messages import SystemMessage, HumanMessage
+        prompt_input = [
+            SystemMessage(content=system_content),
+            HumanMessage(content=query_text)
+        ]
+    else:
+        prompt_input = system_content + f"\n\nQuestion: {query_text}\n\nAnswer:"
     
     # Yield tokens asynchronously
     full_response = ""
     try:
-        async for chunk in llm.astream(prompt_template):
+        chat_id = str(uuid.uuid4())[:8]
+        langfuse_handler = get_langfuse_handler(session_id=f"ws_{collection_name}_{chat_id}", user_id="default_user", tags=["websocket"])
+        config = {"callbacks": [langfuse_handler], "run_name": "TermiCursor_WS_Stream"} if langfuse_handler else {}
+        async for chunk in llm.astream(prompt_input, config=config):
             # Groq returns AIMessageChunk, Ollama might return str
             content = chunk if isinstance(chunk, str) else chunk.content
             full_response += content
@@ -807,7 +854,12 @@ Answer:"""
                 "files_deleted": deleted_files,
                 "project_path": project_path
             })
+            
+        if langfuse_handler:
+            langfuse_handler.flush()
     except Exception as e:
+        if 'langfuse_handler' in locals() and langfuse_handler:
+            langfuse_handler.flush()
         yield f"\\nError during generation: {e}"
 
 

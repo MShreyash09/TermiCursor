@@ -38,10 +38,10 @@ from langfuse.langchain import CallbackHandler
 import uuid
 import langfuse
 
-def get_langfuse_handler(session_id=None, user_id=None, tags=None):
+def get_langfuse_handler():
     # Initializes using LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_HOST from env
     try:
-        return CallbackHandler(session_id=session_id, user_id=user_id, tags=tags)
+        return CallbackHandler()
     except Exception as e:
         print(f"⚠️ Langfuse not configured or error initializing: {e}")
         return None
@@ -542,7 +542,13 @@ def chat_with_cursor(project_path):
             if user_input.lower() in ['exit', 'quit']:
                 print("TermiCursor shutting down...")
                 if 'langfuse_handler' in locals() and langfuse_handler:
-                    langfuse_handler.flush()
+                    try:
+                        if hasattr(langfuse_handler, 'flush'):
+                            langfuse_handler.flush()
+                        elif hasattr(langfuse_handler, '_langfuse_client'):
+                            langfuse_handler._langfuse_client.flush()
+                    except Exception:
+                        pass
                 break
             if not user_input.strip():
                 continue
@@ -552,8 +558,16 @@ def chat_with_cursor(project_path):
             dynamic_guardrail = get_dynamic_guardrail(user_input)
             
             print("🤖 TermiCursor is thinking...")
-            langfuse_handler = get_langfuse_handler(session_id=f"cli_{collection_name}_{chat_id}", user_id="default_user", tags=["cli"])
-            config = {"callbacks": [langfuse_handler], "run_name": "TermiCursor_Chat_Turn"} if langfuse_handler else {}
+            langfuse_handler = get_langfuse_handler()
+            config = {
+                "callbacks": [langfuse_handler], 
+                "run_name": "TermiCursor_Chat_Turn",
+                "metadata": {
+                    "langfuse_session_id": f"cli_{collection_name}_{chat_id}",
+                    "langfuse_user_id": "default_user",
+                    "langfuse_tags": ["cli"]
+                }
+            } if langfuse_handler else {}
             
             response = qa_chain.invoke({
                 "query": user_input, 
@@ -574,7 +588,13 @@ def chat_with_cursor(project_path):
         except KeyboardInterrupt:
             print("\nTermiCursor shutting down...")
             if 'langfuse_handler' in locals() and langfuse_handler:
-                langfuse_handler.flush()
+                try:
+                    if hasattr(langfuse_handler, 'flush'):
+                        langfuse_handler.flush()
+                    elif hasattr(langfuse_handler, '_langfuse_client'):
+                        langfuse_handler._langfuse_client.flush()
+                except Exception:
+                    pass
             break
 
 def single_shot_query(project_path, query_text):
@@ -640,8 +660,16 @@ def single_shot_query(project_path, query_text):
     print("🤖 TermiCursor is thinking...")
     try:
         chat_id = str(uuid.uuid4())[:8]
-        langfuse_handler = get_langfuse_handler(session_id=f"single_{collection_name}_{chat_id}", user_id="default_user", tags=["single_shot"])
-        config = {"callbacks": [langfuse_handler], "run_name": "TermiCursor_Single_Shot"} if langfuse_handler else {}
+        langfuse_handler = get_langfuse_handler()
+        config = {
+            "callbacks": [langfuse_handler], 
+            "run_name": "TermiCursor_Single_Shot",
+            "metadata": {
+                "langfuse_session_id": f"single_{collection_name}_{chat_id}",
+                "langfuse_user_id": "default_user",
+                "langfuse_tags": ["single_shot"]
+            }
+        } if langfuse_handler else {}
         
         response = qa_chain.invoke({
             "query": query_text, 
@@ -658,13 +686,25 @@ def single_shot_query(project_path, query_text):
         deleted_files = check_and_delete_file(result_text, project_path, query_text)
         
         if langfuse_handler:
-            langfuse_handler.flush()
+            try:
+                if hasattr(langfuse_handler, 'flush'):
+                    langfuse_handler.flush()
+                elif hasattr(langfuse_handler, '_langfuse_client'):
+                    langfuse_handler._langfuse_client.flush()
+            except Exception:
+                pass
             
         return {"answer": result_text, "files_created": created_files, "files_deleted": deleted_files}
     except Exception as e:
         print(f"❌ Error executing query: {e}")
         if 'langfuse_handler' in locals() and langfuse_handler:
-            langfuse_handler.flush()
+            try:
+                if hasattr(langfuse_handler, 'flush'):
+                    langfuse_handler.flush()
+                elif hasattr(langfuse_handler, '_langfuse_client'):
+                    langfuse_handler._langfuse_client.flush()
+            except Exception:
+                pass
         return {"error": str(e)}
 
 def get_project_tree(project_path, max_depth=2, max_files=100):
@@ -765,8 +805,16 @@ Context: {context}"""
     full_response = ""
     try:
         chat_id = str(uuid.uuid4())[:8]
-        langfuse_handler = get_langfuse_handler(session_id=f"ws_{collection_name}_{chat_id}", user_id="default_user", tags=["websocket"])
-        config = {"callbacks": [langfuse_handler], "run_name": "TermiCursor_WS_Stream"} if langfuse_handler else {}
+        langfuse_handler = get_langfuse_handler()
+        config = {
+            "callbacks": [langfuse_handler], 
+            "run_name": "TermiCursor_WS_Stream",
+            "metadata": {
+                "langfuse_session_id": f"ws_{collection_name}_{chat_id}",
+                "langfuse_user_id": "default_user",
+                "langfuse_tags": ["websocket"]
+            }
+        } if langfuse_handler else {}
         async for chunk in llm.astream(prompt_input, config=config):
             # Groq returns AIMessageChunk, Ollama might return str
             content = chunk if isinstance(chunk, str) else chunk.content
@@ -789,10 +837,22 @@ Context: {context}"""
             })
             
         if langfuse_handler:
-            langfuse_handler.flush()
+            try:
+                if hasattr(langfuse_handler, 'flush'):
+                    langfuse_handler.flush()
+                elif hasattr(langfuse_handler, '_langfuse_client'):
+                    langfuse_handler._langfuse_client.flush()
+            except Exception:
+                pass
     except Exception as e:
         if 'langfuse_handler' in locals() and langfuse_handler:
-            langfuse_handler.flush()
+            try:
+                if hasattr(langfuse_handler, 'flush'):
+                    langfuse_handler.flush()
+                elif hasattr(langfuse_handler, '_langfuse_client'):
+                    langfuse_handler._langfuse_client.flush()
+            except Exception:
+                pass
         yield f"\\nError during generation: {e}"
 
 

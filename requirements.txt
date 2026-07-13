@@ -14,3 +14,4 @@ python-dotenv
 langchain-groq
 mem0ai
 appdirs
+langfuse>=2.0.0

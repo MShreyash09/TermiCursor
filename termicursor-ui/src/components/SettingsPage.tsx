@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Palette, Type, Terminal, Cpu, Keyboard } from 'lucide-react';
+import { Palette, Type, Terminal, Cpu, Keyboard, Trash2, Plus } from 'lucide-react';
 
 interface SettingItemProps {
   label: string;
@@ -61,9 +61,13 @@ export default function SettingsPage() {
     autoIngest: false,
     llmProvider: 'ollama',
     groqApiKey: '',
+    groqApiKey: '',
     groqModel: 'llama-3.1-8b-instant',
+    customProviders: [] as any[],
   });
 
+  const [newProvider, setNewProvider] = useState({ name: '', apiKey: '', baseUrl: '', model: '' });
+  const [availableOllamaModels, setAvailableOllamaModels] = useState<string[]>([]);
   
   useEffect(() => {
     // @ts-ignore
@@ -77,6 +81,21 @@ export default function SettingsPage() {
     }
   }, []);
 
+  useEffect(() => {
+    if (settings.ollamaUrl) {
+      fetch(`${settings.ollamaUrl}/api/tags`)
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.models) {
+            const models = data.models.map((m: any) => m.name);
+            setAvailableOllamaModels(models);
+            // If current model is not in the list and there are models, maybe we don't force it, but let the user select.
+          }
+        })
+        .catch(err => console.error("Failed to fetch Ollama models:", err));
+    }
+  }, [settings.ollamaUrl]);
+
   const saveToBackend = async (newSettings: any) => {
     // @ts-ignore
     if (window.electronAPI && window.electronAPI.saveSettings) {
@@ -86,13 +105,29 @@ export default function SettingsPage() {
     }
   };
 
-  const updateSetting = (key: string, value: string | boolean) => {
+  const updateSetting = (key: string, value: any) => {
 
     setSettings(prev => {
       const next = { ...prev, [key]: value };
       saveToBackend(next);
       return next;
     });
+  };
+
+  const addCustomProvider = () => {
+    if (!newProvider.name || !newProvider.apiKey || !newProvider.model) {
+      alert('Name, API Key, and Model are required.');
+      return;
+    }
+    const updatedProviders = [...(settings.customProviders || []), newProvider];
+    updateSetting('customProviders', updatedProviders);
+    setNewProvider({ name: '', apiKey: '', baseUrl: '', model: '' });
+  };
+
+  const removeCustomProvider = (index: number) => {
+    const updatedProviders = [...(settings.customProviders || [])];
+    updatedProviders.splice(index, 1);
+    updateSetting('customProviders', updatedProviders);
   };
 
   const sections = [
@@ -170,8 +205,8 @@ export default function SettingsPage() {
       items: [
         {
           label: 'LLM Provider',
-          description: 'Choose between local Ollama or cloud Groq',
-          control: <Dropdown value={settings.llmProvider} options={['ollama', 'groq']} onChange={(v) => updateSetting('llmProvider', v)} />,
+          description: 'Choose between local Ollama, cloud Groq, or custom providers',
+          control: <Dropdown value={settings.llmProvider} options={['ollama', 'groq', ...(settings.customProviders || []).map((p: any) => p.name)]} onChange={(v) => updateSetting('llmProvider', v)} />,
         },
         {
           label: 'Groq API Key',
@@ -194,12 +229,20 @@ export default function SettingsPage() {
           label: 'Ollama Model',
           description: 'The Ollama model used for code assistance (e.g. qwen:1.8b or qwen2.5-coder:1.5b)',
           control: (
-            <input
-              type="text"
-              value={settings.ollamaModel || ''}
-              onChange={(e) => updateSetting('ollamaModel', e.target.value)}
-              className="bg-[#0b2b2d] border border-[#1a4042] rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-[#2b6b69] w-52"
-            />
+            <>
+              <input
+                type="text"
+                list="ollama-models"
+                value={settings.ollamaModel || ''}
+                onChange={(e) => updateSetting('ollamaModel', e.target.value)}
+                className="bg-[#0b2b2d] border border-[#1a4042] rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-[#2b6b69] w-52"
+              />
+              <datalist id="ollama-models">
+                {availableOllamaModels.map(model => (
+                  <option key={model} value={model} />
+                ))}
+              </datalist>
+            </>
           ),
         },
         {
@@ -218,6 +261,34 @@ export default function SettingsPage() {
           label: 'Auto-Ingest on Open',
           description: 'Automatically ingest the codebase when a folder is opened',
           control: <Toggle checked={settings.autoIngest} onChange={(v) => updateSetting('autoIngest', v)} />,
+        },
+        {
+          label: 'Custom API Providers',
+          description: 'Add custom OpenAI-compatible models (e.g. GLM, DeepSeek, Together, Kimi)',
+          control: (
+            <div className="flex flex-col gap-3 mt-2 min-w-[300px]">
+              {(settings.customProviders || []).map((provider: any, idx: number) => (
+                <div key={idx} className="flex items-center justify-between bg-[#081e1f] p-2 rounded border border-[#1a4042]">
+                  <div className="flex flex-col">
+                    <span className="text-sm font-semibold text-gray-200">{provider.name}</span>
+                    <span className="text-xs text-gray-500">{provider.model}</span>
+                  </div>
+                  <button onClick={() => removeCustomProvider(idx)} className="text-red-400 hover:text-red-300 p-1">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+              <div className="flex flex-col gap-2 p-3 bg-[#0a2324] border border-[#1a4042] rounded-lg mt-2">
+                <input type="text" placeholder="Provider Name (e.g. OpenAI)" value={newProvider.name} onChange={e => setNewProvider(p => ({...p, name: e.target.value}))} className="bg-[#0b2b2d] border border-[#1a4042] rounded px-3 py-1.5 text-xs text-gray-200 focus:outline-none focus:border-primary" />
+                <input type="text" placeholder="Model Name (e.g. gpt-4o)" value={newProvider.model} onChange={e => setNewProvider(p => ({...p, model: e.target.value}))} className="bg-[#0b2b2d] border border-[#1a4042] rounded px-3 py-1.5 text-xs text-gray-200 focus:outline-none focus:border-primary" />
+                <input type="password" placeholder="API Key" value={newProvider.apiKey} onChange={e => setNewProvider(p => ({...p, apiKey: e.target.value}))} className="bg-[#0b2b2d] border border-[#1a4042] rounded px-3 py-1.5 text-xs text-gray-200 focus:outline-none focus:border-primary" />
+                <input type="text" placeholder="Base URL (Optional)" value={newProvider.baseUrl} onChange={e => setNewProvider(p => ({...p, baseUrl: e.target.value}))} className="bg-[#0b2b2d] border border-[#1a4042] rounded px-3 py-1.5 text-xs text-gray-200 focus:outline-none focus:border-primary" />
+                <button onClick={addCustomProvider} className="flex items-center justify-center gap-1 bg-[#1e4b4a] hover:bg-[#2b6b69] text-white rounded px-3 py-1.5 text-xs transition-colors mt-1">
+                  <Plus size={14} /> Add Provider
+                </button>
+              </div>
+            </div>
+          )
         },
       ],
     },

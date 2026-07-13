@@ -14,6 +14,13 @@ if sys.platform.startswith('win'):
     except AttributeError:
         pass
 
+from dotenv import load_dotenv
+load_dotenv()
+
+# Map LANGFUSE_BASE_URL to LANGFUSE_HOST if present
+if os.getenv("LANGFUSE_BASE_URL") and not os.getenv("LANGFUSE_HOST"):
+    os.environ["LANGFUSE_HOST"] = os.getenv("LANGFUSE_BASE_URL")
+
 from langchain_community.document_loaders.generic import GenericLoader
 from langchain_community.document_loaders.parsers import LanguageParser
 from langchain_text_splitters import RecursiveCharacterTextSplitter, Language
@@ -25,10 +32,19 @@ from langchain_qdrant import QdrantVectorStore
 from langchain_classic.chains import RetrievalQA
 from langchain_classic.prompts import PromptTemplate
 from langchain_groq import ChatGroq
-from dotenv import load_dotenv
 from qdrant_client import QdrantClient
+from langfuse.langchain import CallbackHandler
 
-load_dotenv()
+import uuid
+import langfuse
+
+def get_langfuse_handler(session_id=None, user_id=None, tags=None):
+    # Initializes using LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_HOST from env
+    try:
+        return CallbackHandler(session_id=session_id, user_id=user_id, tags=tags)
+    except Exception as e:
+        print(f"⚠️ Langfuse not configured or error initializing: {e}")
+        return None
 
 # AppData location for packaged apps
 APP_DATA_DIR = os.getenv("TERMICURSOR_USER_DATA")
@@ -93,7 +109,7 @@ try:
                 "max_tokens": 2000,
             },
         }
-    else:
+    elif LLM_PROVIDER == "ollama":
         mem0_config["llm"] = {
             "provider": "ollama",
             "config": {
@@ -103,6 +119,31 @@ try:
                 "max_tokens": 2000,
             },
         }
+    else:
+        custom_providers = _settings.get("customProviders", [])
+        provider = next((p for p in custom_providers if p.get("name") == LLM_PROVIDER), None)
+        if provider:
+            mem0_config["llm"] = {
+                "provider": "openai",
+                "config": {
+                    "model": provider.get("model", "gpt-3.5-turbo"),
+                    "api_key": provider.get("apiKey"),
+                    "temperature": 0,
+                    "max_tokens": 2000,
+                }
+            }
+            if provider.get("baseUrl"):
+                mem0_config["llm"]["config"]["openai_base_url"] = provider.get("baseUrl")
+        else:
+            mem0_config["llm"] = {
+                "provider": "ollama",
+                "config": {
+                    "model": LLM_MODEL,
+                    "ollama_base_url": OLLAMA_URL,
+                    "temperature": 0,
+                    "max_tokens": 2000,
+                },
+            }
 
     user_memory = Memory.from_config(mem0_config)
     print("🧠 Mem0 memory layer initialized successfully!")
@@ -112,21 +153,48 @@ except Exception as e:
     user_memory = None
 
 def get_llm():
-    if LLM_PROVIDER == "groq":
-        if not GROQ_API_KEY:
-            print("❌ Error: GROQ_API_KEY is missing in .env file.")
+    # Reload settings dynamically so we don't need a server restart
+    _settings = load_settings()
+    llm_provider = _settings.get("llmProvider", os.getenv("LLM_PROVIDER", "ollama")).lower()
+    groq_api_key = _settings.get("groqApiKey", os.getenv("GROQ_API_KEY", ""))
+    groq_model = _settings.get("groqModel", os.getenv("GROQ_MODEL", "llama-3.1-8b-instant"))
+    llm_model = _settings.get("ollamaModel", os.getenv("OLLAMA_LLM_MODEL", "qwen2.5-coder:3b"))
+    ollama_url = _settings.get("ollamaUrl", os.getenv("OLLAMA_URL", "http://localhost:11434"))
+
+    if llm_provider == "groq":
+        if not groq_api_key:
+            print("❌ Error: GROQ_API_KEY is missing in settings.")
             sys.exit(1)
-        return ChatGroq(model=GROQ_MODEL, api_key=GROQ_API_KEY)
+        return ChatGroq(model=groq_model, api_key=groq_api_key)
+    elif llm_provider == "ollama":
+        return OllamaLLM(model=llm_model, base_url=ollama_url)
     else:
-        return OllamaLLM(model=LLM_MODEL, base_url=OLLAMA_URL)
+        custom_providers = _settings.get("customProviders", [])
+        provider = next((p for p in custom_providers if p.get("name") == llm_provider), None)
+        
+        if provider:
+            from langchain_community.chat_models import ChatOpenAI
+            kwargs = {
+                "openai_api_key": provider.get("apiKey"),
+                "model_name": provider.get("model", "gpt-3.5-turbo"),
+            }
+            base_url = provider.get("baseUrl")
+            if base_url:
+                kwargs["openai_api_base"] = base_url
+                
+            return ChatOpenAI(**kwargs)
+            
+        print(f"❌ Error: Unknown LLM provider '{llm_provider}'. Falling back to Ollama.")
+        return OllamaLLM(model=llm_model, base_url=ollama_url)
 
 
 def get_ollama_status():
     """Checks Ollama status and returns a dictionary with missing models."""
+    global LLM_MODEL
     try:
         response = requests.get(f"{OLLAMA_URL}/api/tags", timeout=5)
         if response.status_code != 200:
-            return {"status": "error", "reason": "ollama_error", "ollama_ready": False, "missing_models": []}
+            return {"status": "error", "reason": "ollama_error", "ollama_ready": False, "missing_models": [], "available_models": []}
         
         models = [m['name'] for m in response.json().get('models', [])]
         
@@ -138,7 +206,12 @@ def get_ollama_status():
         if LLM_PROVIDER == "ollama":
             llm_found = any(LLM_MODEL in m for m in models)
             if not llm_found:
-                missing.append(LLM_MODEL)
+                # Fallback to the first available non-embedding model if the configured one is missing
+                non_embed_models = [m for m in models if "embed" not in m.lower()]
+                if non_embed_models:
+                    LLM_MODEL = non_embed_models[0]
+                else:
+                    missing.append(LLM_MODEL)
                 
         if missing:
             return {
@@ -150,10 +223,11 @@ def get_ollama_status():
             }
         return {"status": "ok", "ollama_ready": True, "missing_models": [], "available_models": models}
     except requests.exceptions.ConnectionError:
-        return {"status": "error", "reason": "connection_error", "ollama_ready": False, "missing_models": []}
+        return {"status": "error", "reason": "connection_error", "ollama_ready": False, "missing_models": [], "available_models": []}
 
 
 def validate_ollama_status():
+    global LLM_MODEL
     print("⏳ Checking Ollama local service status...")
     try:
         response = requests.get(f"{OLLAMA_URL}/api/tags", timeout=5)
@@ -166,6 +240,12 @@ def validate_ollama_status():
         # Check for embed model and LLM model
         embed_found = any(EMBED_MODEL in m for m in models)
         llm_found = any(LLM_MODEL in m for m in models)
+        
+        if not llm_found and LLM_PROVIDER == "ollama":
+            non_embed_models = [m for m in models if "embed" not in m.lower()]
+            if non_embed_models:
+                LLM_MODEL = non_embed_models[0]
+                llm_found = True
         
         if not embed_found or (LLM_PROVIDER == "ollama" and not llm_found):
             print("\n⚠️ Missing required Ollama models:")
@@ -278,10 +358,20 @@ def check_and_create_file(response_text, project_path):
     return created_files
 
 
-def check_and_delete_file(response_text, project_path):
+def check_and_delete_file(response_text, project_path, user_query=""):
     file_pattern = r"\[DELETE_FILE:\s*([a-zA-Z0-9_\-\.\/\\]+)\]"
     matches = re.findall(file_pattern, response_text)
     deleted_files = []
+    
+    if matches:
+        deletion_keywords = ["delete", "remove", "rm", "erase", "clear"]
+        query_lower = user_query.lower()
+        wants_deletion = any(keyword in query_lower for keyword in deletion_keywords)
+        
+        if not wants_deletion:
+            print("\n🛡️ [System] Blocked accidental file deletion attempt by the model.")
+            print("   (The model tried to delete files without explicit user instruction)")
+            return deleted_files
     
     if not project_path:
         print("\n❌ [System] No project path set — cannot delete files.")
@@ -424,34 +514,7 @@ def chat_with_cursor(project_path):
     llm = get_llm()
 
     prompt_template = """
-    You are TermiCursor, an elite AI coding assistant.
-    Use the following pieces of retrieved codebase context and your memory of past interactions to answer the user's question.
-    If you don't know the answer or the context doesn't have it, say that you don't know.
-    Write clean, efficient code. And handle simple small talk like reply hello I am
-    TermiCursor when asked and thankyou for using TermiCursor when user say bye and stop the terminal chat.
-    
-    If the user explicitly asks you to create, write, or generate a file (e.g. "create a python file named app.py and write code"), you MUST structure your response to write the file by enclosing the file creation command and content in these exact tags:
-    [CREATE_FILE: <filename>]
-    <file_contents>
-    [/CREATE_FILE]
-
-    If the user explicitly asks you to delete or remove one or more files, you MUST structure your response to delete the files by enclosing each file deletion command in this exact tag:
-    [DELETE_FILE: <filename>]
-    You can output multiple [DELETE_FILE: <filename>] tags to delete multiple files. You should delete files exactly as requested by the user, even if they do not appear in the retrieved context.
-    
-    Example:
-    If the user asks: "Create a python file named hello.py that prints hello world"
-    Your response should look like:
-    I will create that file for you.
-    [CREATE_FILE: hello.py]
-    print("Hello, World!")
-    [/CREATE_FILE]
-
-    If the user asks: "Delete hello.py and main.py"
-    Your response should look like:
-    I will delete those files for you.
-    [DELETE_FILE: hello.py]
-    [DELETE_FILE: main.py]
+    {guardrail}
 
     Relevant Memory from Past Conversations:
     {memories}
@@ -462,7 +525,7 @@ def chat_with_cursor(project_path):
     
     Answer:"""
     
-    PROMPT = PromptTemplate(template=prompt_template, input_variables=["context", "question", "memories"])
+    PROMPT = PromptTemplate(template=prompt_template, input_variables=["guardrail", "context", "question", "memories"])
 
     qa_chain = RetrievalQA.from_chain_type(
         llm=llm,
@@ -472,20 +535,31 @@ def chat_with_cursor(project_path):
     )
 
     # Interactive Loop
+    chat_id = str(uuid.uuid4())[:8]
     while True:
         try:
             user_input = input("You ❯ ")
             if user_input.lower() in ['exit', 'quit']:
                 print("TermiCursor shutting down...")
+                if 'langfuse_handler' in locals() and langfuse_handler:
+                    langfuse_handler.flush()
                 break
             if not user_input.strip():
                 continue
             
             # Retrieve relevant memories
             memory_context = get_memory_context(user_input)
+            dynamic_guardrail = get_dynamic_guardrail(user_input)
             
             print("🤖 TermiCursor is thinking...")
-            response = qa_chain.invoke({"query": user_input, "memories": memory_context})
+            langfuse_handler = get_langfuse_handler(session_id=f"cli_{collection_name}_{chat_id}", user_id="default_user", tags=["cli"])
+            config = {"callbacks": [langfuse_handler], "run_name": "TermiCursor_Chat_Turn"} if langfuse_handler else {}
+            
+            response = qa_chain.invoke({
+                "query": user_input, 
+                "memories": memory_context, 
+                "guardrail": dynamic_guardrail
+            }, config=config)
             result_text = response["result"]
             print("\n" + result_text)
             print("\n" + "-"*40 + "\n")
@@ -495,10 +569,12 @@ def chat_with_cursor(project_path):
             
             # Check for file creation tags and execute
             check_and_create_file(result_text, project_path)
-            check_and_delete_file(result_text, project_path)
+            check_and_delete_file(result_text, project_path, user_input)
 
         except KeyboardInterrupt:
             print("\nTermiCursor shutting down...")
+            if 'langfuse_handler' in locals() and langfuse_handler:
+                langfuse_handler.flush()
             break
 
 def single_shot_query(project_path, query_text):
@@ -521,40 +597,16 @@ def single_shot_query(project_path, query_text):
     retriever = qdrant.as_retriever(search_kwargs={"k": 10}) 
     llm = get_llm()
 
-    prompt_template = f"""
-    You are TermiCursor, an elite AI coding assistant.
-    Use the following pieces of retrieved codebase context and your memory of past interactions to answer the user's question.
-    If you don't know the answer or the context doesn't have it, say that you don't know.
-    Write clean, efficient code.
-
-    If the user explicitly asks you to create, write, or generate a file (e.g. "create a python file named app.py and write code"), you MUST structure your response to write the file by enclosing the file creation command and content in these exact tags:
-    [CREATE_FILE: <filename>]
-    <file_contents>
-    [/CREATE_FILE]
-
-    If the user explicitly asks you to delete or remove one or more files, you MUST structure your response to delete the files by enclosing each file deletion command in this exact tag:
-    [DELETE_FILE: <filename>]
-    You can output multiple [DELETE_FILE: <filename>] tags to delete multiple files. You should delete files exactly as requested by the user, even if they do not appear in the retrieved context.
+    project_tree_str = get_project_tree(project_path)
     
-    Example:
-    If the user asks: "Create a python file named hello.py that prints hello world"
-    Your response should look like:
-    I will create that file for you.
-    [CREATE_FILE: hello.py]
-    print("Hello, World!")
-    [/CREATE_FILE]
-
-    If the user asks: "Delete hello.py and main.py"
-    Your response should look like:
-    I will delete those files for you.
-    [DELETE_FILE: hello.py]
-    [DELETE_FILE: main.py]
+    dynamic_guardrail = get_dynamic_guardrail(query_text)
+    prompt_template = f"""{dynamic_guardrail}
 
     Relevant Memory from Past Conversations:
     {{memories}}
 
     Project File Tree (Current Workspace Directory):
-    {get_project_tree(project_path)}
+    {project_tree_str}
 
     Codebase Context: {{context}}
     
@@ -563,6 +615,17 @@ def single_shot_query(project_path, query_text):
     Answer:"""
     
     PROMPT = PromptTemplate(template=prompt_template, input_variables=["context", "question", "memories"])
+    
+    from langchain_core.language_models.chat_models import BaseChatModel
+    if isinstance(llm, BaseChatModel) or "Chat" in type(llm).__name__:
+        from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
+        PROMPT = ChatPromptTemplate.from_messages([
+            SystemMessagePromptTemplate.from_template(prompt_template),
+            HumanMessagePromptTemplate.from_template("Question: {question}\n\nAnswer:")
+        ])
+    else:
+        # Re-initialize prompt for non-chat models
+        PROMPT = PromptTemplate(template=prompt_template + "\n    Question: {question}\n    \n    Answer:", input_variables=["context", "question", "memories"])
 
     qa_chain = RetrievalQA.from_chain_type(
         llm=llm,
@@ -576,7 +639,14 @@ def single_shot_query(project_path, query_text):
 
     print("🤖 TermiCursor is thinking...")
     try:
-        response = qa_chain.invoke({"query": query_text, "memories": memory_context})
+        chat_id = str(uuid.uuid4())[:8]
+        langfuse_handler = get_langfuse_handler(session_id=f"single_{collection_name}_{chat_id}", user_id="default_user", tags=["single_shot"])
+        config = {"callbacks": [langfuse_handler], "run_name": "TermiCursor_Single_Shot"} if langfuse_handler else {}
+        
+        response = qa_chain.invoke({
+            "query": query_text, 
+            "memories": memory_context
+        }, config=config)
         result_text = response["result"]
         print("\n" + result_text)
         
@@ -585,10 +655,16 @@ def single_shot_query(project_path, query_text):
         
         # Check for file creation tags and execute
         created_files = check_and_create_file(result_text, project_path)
-        deleted_files = check_and_delete_file(result_text, project_path)
+        deleted_files = check_and_delete_file(result_text, project_path, query_text)
+        
+        if langfuse_handler:
+            langfuse_handler.flush()
+            
         return {"answer": result_text, "files_created": created_files, "files_deleted": deleted_files}
     except Exception as e:
         print(f"❌ Error executing query: {e}")
+        if 'langfuse_handler' in locals() and langfuse_handler:
+            langfuse_handler.flush()
         return {"error": str(e)}
 
 def get_project_tree(project_path, max_depth=2, max_files=100):
@@ -658,20 +734,11 @@ async def async_stream_query(project_path, query_text):
     
     # Retrieve relevant memories for this query
     memory_context = get_memory_context(query_text)
+    dynamic_guardrail = get_dynamic_guardrail(query_text)
 
-    prompt_template = f"""You are TermiCursor, an elite AI coding assistant.
-Use the following pieces of retrieved codebase context and your memory of past interactions to answer the user's question.
-If you don't know the answer or the context doesn't have it, say that you don't know.
-Write clean, efficient code.
+    llm = get_llm()
 
-If the user explicitly asks you to create, write, or generate a file (e.g. "create a python file named app.py and write code"), you MUST structure your response to write the file by enclosing the file creation command and content in these exact tags:
-[CREATE_FILE: <filename>]
-<file_contents>
-[/CREATE_FILE]
-
-If the user explicitly asks you to delete or remove one or more files, you MUST structure your response to delete the files by enclosing each file deletion command in this exact tag:
-[DELETE_FILE: <filename>]
-You can output multiple [DELETE_FILE: <filename>] tags to delete multiple files. You should delete files exactly as requested by the user, even if they do not appear in the retrieved context.
+    system_content = f"""{dynamic_guardrail}
 
 Relevant Memory from Past Conversations:
 {memory_context}
@@ -682,18 +749,25 @@ Project File Tree (Current Workspace Directory):
 Files found in the codebase (from RAG search):
 {file_list}
 
-Context: {context}
+Context: {context}"""
 
-Question: {query_text}
-
-Answer:"""
-
-    llm = get_llm()
+    from langchain_core.language_models.chat_models import BaseChatModel
+    if isinstance(llm, BaseChatModel) or "Chat" in type(llm).__name__:
+        from langchain_core.messages import SystemMessage, HumanMessage
+        prompt_input = [
+            SystemMessage(content=system_content),
+            HumanMessage(content=query_text)
+        ]
+    else:
+        prompt_input = system_content + f"\n\nQuestion: {query_text}\n\nAnswer:"
     
     # Yield tokens asynchronously
     full_response = ""
     try:
-        async for chunk in llm.astream(prompt_template):
+        chat_id = str(uuid.uuid4())[:8]
+        langfuse_handler = get_langfuse_handler(session_id=f"ws_{collection_name}_{chat_id}", user_id="default_user", tags=["websocket"])
+        config = {"callbacks": [langfuse_handler], "run_name": "TermiCursor_WS_Stream"} if langfuse_handler else {}
+        async for chunk in llm.astream(prompt_input, config=config):
             # Groq returns AIMessageChunk, Ollama might return str
             content = chunk if isinstance(chunk, str) else chunk.content
             full_response += content
@@ -705,7 +779,7 @@ Answer:"""
         # After streaming, process any files that might have been requested
         import json as _json
         created_files = check_and_create_file(full_response, project_path)
-        deleted_files = check_and_delete_file(full_response, project_path)
+        deleted_files = check_and_delete_file(full_response, project_path, query_text)
         if created_files or deleted_files:
             yield _json.dumps({
                 "type": "files_created",
@@ -713,7 +787,12 @@ Answer:"""
                 "files_deleted": deleted_files,
                 "project_path": project_path
             })
+            
+        if langfuse_handler:
+            langfuse_handler.flush()
     except Exception as e:
+        if 'langfuse_handler' in locals() and langfuse_handler:
+            langfuse_handler.flush()
         yield f"\\nError during generation: {e}"
 
 

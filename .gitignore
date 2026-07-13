@@ -9,3 +9,4 @@ termicursor-ui/dist/
 termicursor-ui/release/
 termicursor-ui/node_modules/
 landing-page/Termicursor Setup 0.0.0.exe
+.env

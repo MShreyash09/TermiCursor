@@ -521,6 +521,9 @@ def single_shot_query(project_path, query_text):
     retriever = qdrant.as_retriever(search_kwargs={"k": 10}) 
     llm = get_llm()
 
+    # Retrieve relevant memories
+    memory_context = get_memory_context(query_text)
+
     prompt_template = f"""
     You are TermiCursor, an elite AI coding assistant.
     Use the following pieces of retrieved codebase context and your memory of past interactions to answer the user's question.
@@ -551,7 +554,7 @@ def single_shot_query(project_path, query_text):
     [DELETE_FILE: main.py]
 
     Relevant Memory from Past Conversations:
-    {{memories}}
+    {memory_context}
 
     Project File Tree (Current Workspace Directory):
     {get_project_tree(project_path)}
@@ -562,7 +565,7 @@ def single_shot_query(project_path, query_text):
     
     Answer:"""
     
-    PROMPT = PromptTemplate(template=prompt_template, input_variables=["context", "question", "memories"])
+    PROMPT = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
 
     qa_chain = RetrievalQA.from_chain_type(
         llm=llm,
@@ -571,12 +574,9 @@ def single_shot_query(project_path, query_text):
         chain_type_kwargs={"prompt": PROMPT}
     )
 
-    # Retrieve relevant memories
-    memory_context = get_memory_context(query_text)
-
     print("🤖 TermiCursor is thinking...")
     try:
-        response = qa_chain.invoke({"query": query_text, "memories": memory_context})
+        response = qa_chain.invoke({"query": query_text})
         result_text = response["result"]
         print("\n" + result_text)
         

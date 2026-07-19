@@ -25,9 +25,9 @@ Return ONLY a valid JSON object matching this exact format, with no markdown fen
 """
 
 def call_judge_api(prompt_text, response_text, rubric_criteria):
-    # Using Groq (as configured in termicursor) to run a strong model like llama-3.1-70b as the judge
+    # Using Groq (as configured in termicursor) to run a strong model like llama-3.3-70b as the judge
     # Alternatively, you can swap this for OpenAI GPT-4o or Anthropic Claude 3.5 Sonnet
-    judge = ChatGroq(model="llama-3.1-70b-versatile", temperature=0.0)
+    judge = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.0)
     
     formatted_prompt = JUDGE_PROMPT.format(
         prompt=prompt_text,
@@ -60,7 +60,7 @@ def main():
     with open("test_cases.json", "r", encoding="utf-8") as f:
         test_cases = {tc["id"]: tc for tc in json.load(f)}
 
-    print("⚖️ Starting LLM-as-a-Judge Evaluation...")
+    print("Starting LLM-as-a-Judge Evaluation...")
     for idx, r in enumerate(results):
         if "scores" in r:
             continue # Skip already scored
@@ -75,7 +75,7 @@ def main():
         with open("benchmark_results_scored.json", "w", encoding="utf-8") as out:
             json.dump(results, out, indent=2)
             
-    print("✅ Judging complete! Saved to benchmark_results_scored.json")
+    print("Judging complete! Saved to benchmark_results_scored.json")
 
 if __name__ == "__main__":
     main()

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle, type PanelImperativeHandle } from 'react-resizable-panels';
 import TitleBar from './components/TitleBar';
-import Sidebar from './components/Sidebar';
+import AgentPanel from './components/AgentPanel/AgentPanel';
 import EditorView from './components/EditorView';
 import FileTree from './components/FileTree';
 import ActivityBar from './components/ActivityBar';
@@ -533,11 +533,11 @@ if __name__ == "__main__":
             maxSize={400}
             className="flex overflow-hidden"
           >
-            <Sidebar backendPort={backendPort}
+            <AgentPanel backendPort={backendPort}
               projectPath={projectPath}
               isIngesting={isIngesting}
               backendStatus={backendStatus}
-              onFilesCreated={() => {
+              onFilesChanged={() => {
                 setFileTreeRefreshKey(prev => prev + 1);
               }}
             />

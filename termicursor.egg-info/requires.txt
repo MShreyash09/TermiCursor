@@ -17,4 +17,3 @@ appdirs
 playwright
 rich
 prompt_toolkit
-questionary>=2.0.0

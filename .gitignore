@@ -12,3 +12,4 @@ landing-page/Termicursor Setup 0.0.0.exe
 .env
 .env.local
 .env.*
+frontend/release/

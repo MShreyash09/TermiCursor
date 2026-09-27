@@ -1,18 +1,28 @@
 import asyncio
 import os
+import random
 import sys
+import time
 
+from rich.align import Align
+from rich.box import Box
 from rich.console import Console
 from rich.markdown import Markdown
+from rich.padding import Padding
 from rich.panel import Panel
 from rich.live import Live
 from rich.spinner import Spinner
+from rich.table import Table
 from rich.text import Text
 from rich.prompt import Confirm
 from prompt_toolkit import PromptSession
+from prompt_toolkit.formatted_text import FormattedText
+from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.styles import Style
 
 import rag
+import core.config
+from core import __version__ as VERSION
 from core.persistence import db
 from core.agent.session import AgentSession
 from core.agent.loop import AgentLoop
@@ -26,189 +36,285 @@ if sys.platform.startswith('win'):
     except AttributeError:
         pass
 
-console = Console()
+console = Console(highlight=False)
 
-style = Style.from_dict({
-    'prompt': 'ansicyan bold',
-})
+# Palette: hacker green, black & white, red, blue, purple, golden orange.
+GREEN = "#39ff14"
+RED = "#ff4d4d"
+ACCENT = "#3d8bff"       # Build agent (blue)
+PLAN_ACCENT = "#b877ff"  # Plan agent (purple)
+ASK_ACCENT = GREEN       # Ask agent (green)
+WARN = "#ffb000"         # golden orange: tips, tools, approvals
+
+AGENTS = ["build", "plan", "ask"]  # tab cycles through these
+AGENT_COLORS = {"build": ACCENT, "plan": PLAN_ACCENT, "ask": ASK_ACCENT}
+
+# Panel box with only a heavy left bar — opencode-style message blocks.
+LEFT_BAR = Box("┃   \n┃   \n┃   \n┃   \n┃   \n┃   \n┃   \n┃   \n")
+
+# 3-row half-block font for the wordmark.
+_GLYPHS = {
+    "t": ["▀█▀", " █ ", " ▀ "], "e": ["█▀▀", "█▀▀", "▀▀▀"], "r": ["█▀▄", "█▀▄", "▀ ▀"],
+    "m": ["█▀▄▀█", "█ ▀ █", "▀   ▀"], "i": ["█", "█", "▀"], "c": ["█▀▀", "█  ", "▀▀▀"],
+    "u": ["█ █", "█ █", "▀▀▀"], "s": ["█▀▀", "▀▀█", "▀▀▀"], "o": ["█▀█", "█ █", "▀▀▀"],
+}
+
+TIPS = [
+    "Press [bold white]tab[/] to cycle the [bold white]Build[/], [bold white]Plan[/] and [bold white]Ask[/] agents",
+    "The [bold white]Ask[/] agent answers questions about your code without changing anything",
+    "The [bold white]Plan[/] agent lets you review and edit the plan before any code is written",
+    "Run [bold white]/model[/] to pick a different Ollama model",
+    "The agent asks before every shell command and file delete",
+]
+
+HELP = """[bold white]/model[/]  [grey62]choose the Ollama model[/]
+[bold white]/plan[/]   [grey62]Plan agent — review the plan before coding[/]
+[bold white]/build[/]  [grey62]Build agent — code right away[/]
+[bold white]/ask[/]    [grey62]Ask agent — answer questions, read-only[/]
+[bold white]/clear[/]  [grey62]clear the screen[/]
+[bold white]/exit[/]   [grey62]quit[/]
+[bold white]tab[/]     [grey62]cycle Build / Plan / Ask[/]"""
+
+state = {"agent": "build"}
+
+
+def agent_color() -> str:
+    return AGENT_COLORS[state["agent"]]
+
+
+def logo() -> Text:
+    # The block wordmark is ~58 cols wide; fall back to plain text on narrow windows.
+    if console.width < 64:
+        return Text.assemble(("termi", "bold white"), ("cursor", f"bold {GREEN}"), justify="center")
+    t = Text(justify="center")
+    for row in range(3):
+        for word, style in (("termi", "bold white"), ("cursor", f"bold {GREEN}")):
+            t.append(" ".join(_GLYPHS[ch][row] for ch in word) + " ", style=style)
+        t.append("\n")
+    return t
+
+
+def welcome(project_path: str) -> None:
+    console.clear()
+    console.print("\n")
+    console.print(Align.center(logo()))
+    console.print(Align.center(Text.from_markup(
+        "[bold white]tab[/] [grey50]agents[/]   [bold white]/help[/] [grey50]commands[/]")))
+    console.print()
+    console.print(Align.center(Text.from_markup(f"[{WARN}]● Tip[/] [grey62]{random.choice(TIPS)}[/]")))
+    console.print()
+    footer = Table.grid(expand=True)
+    footer.add_column(justify="left")
+    footer.add_column(justify="right")
+    footer.add_row(Text(project_path.replace(os.path.expanduser("~"), "~"), style="grey50",
+                        overflow="ellipsis", no_wrap=True),
+                   Text(f"v{VERSION}", style=GREEN))
+    console.print(footer)
+    console.rule(style="#1f3d1a")
+
+
+def block(body, color: str, title: str | None = None) -> None:
+    console.print(Panel(body, title=title, title_align="left", border_style=color,
+                        box=LEFT_BAR, padding=(0, 1)))
+
+
+def section(label: str, color: str, text: str = "") -> None:
+    console.print(Text.assemble(("┃ ", color), (label, f"bold {color}"), ("  " + text, "grey70")))
+
+
+def steps_table(steps: list[dict], marker: str = "") -> Table:
+    table = Table(box=None, show_header=False, padding=(0, 1))
+    for i, st in enumerate(steps, 1):
+        table.add_row(Text(marker or f"{i}.", style="grey50"), Text(st["description"], style="grey85"))
+    return table
+
+
+async def review_plan_cli(session: AgentSession, steps: list[dict]) -> None:
+    import questionary
+    block(steps_table(steps), PLAN_ACCENT, title=f"[bold {PLAN_ACCENT}]Plan[/] [grey50]review before coding[/]")
+    choice = await questionary.select(
+        "What next?", choices=["Approve & start coding", "Suggest changes", "Reject"],
+    ).ask_async()
+    if choice == "Approve & start coding":
+        session.resolve_plan_review({"action": "approve"})
+        section("approved", GREEN, "starting to code…")
+    elif choice == "Suggest changes":
+        fb = await questionary.text("Describe the changes:").ask_async()
+        session.resolve_plan_review({"action": "revise", "feedback": fb or ""})
+        section("revising", PLAN_ACCENT, fb or "")
+    else:
+        session.resolve_plan_review({"action": "reject"})
+
 
 async def run_agent(project_path: str, goal: str):
-    session = AgentSession(project_path=project_path, goal=goal)
-    console.print(f"\n[bold green]Goal:[/bold green] {goal}")
-    
+    session = AgentSession(project_path=project_path, goal=goal, agent=state["agent"])
+    color = agent_color()
+
     loop = AgentLoop(session)
-    
-    # We use a spinner to show when the agent is thinking/running
-    status_text = "Agent is thinking..."
-    spinner = Spinner("dots", text=status_text)
-    
+    spinner = Spinner("dots", text=Text("thinking…", style="grey62"), style=color)
+    started = time.monotonic()
+
     with Live(spinner, refresh_per_second=10, console=console, transient=True) as live:
         async for ev in loop.run():
             t = ev.get("type")
-            
+
             if t == "mode":
-                pass
-            elif t == "plan":
-                console.print(Panel("[bold]Plan Created:[/bold]", border_style="cyan"))
-                for idx, s in enumerate(ev["steps"]):
-                    console.print(f"  {idx+1}. {s['description']}")
-            elif t == "task_update":
-                spinner.update(text=f"[cyan]Working on:[/cyan] {ev['description']} ({ev['status']})")
-            elif t == "thought":
-                console.print(f"[bold magenta]🤖 Thought:[/bold magenta] {ev['text']}")
-            elif t == "tool_call":
-                spinner.update(text=f"[yellow]Calling tool:[/yellow] {ev['tool']}")
-            elif t == "approval_needed":
-                # Pause live display to ask for input
+                spinner.update(text=Text("planning…" if ev["mode"] == "complex" else "thinking…", style="grey62"))
+            elif t == "plan_review":
                 live.stop()
-                console.print(f"\n[bold red]⚠️  Approval Required[/bold red]")
-                console.print(f"Tool: [bold]{ev['tool']}[/bold]")
-                console.print(f"Args: {ev['args']}")
-                
-                # Use rich Prompt for synchronous y/n
-                approved = Confirm.ask("Allow this action?")
+                await review_plan_cli(session, ev["steps"])
+                live.start()
+            elif t == "plan":
+                block(steps_table(ev["steps"], "○"), color, title=f"[bold {color}]Plan[/]")
+            elif t == "task_update":
+                if ev["status"] == "in_progress" and ev["description"] != goal:
+                    section("◐", color, ev["description"])
+                spinner.update(text=Text(ev["description"], style="grey62"))
+            elif t == "thought":
+                console.print(Padding(Text(ev["text"], style="italic grey62"), (0, 0, 0, 2)))
+            elif t == "tool_call":
+                args = ", ".join(f"{k}={str(v)[:60]}" for k, v in (ev.get("args") or {}).items())
+                console.print(Text.assemble(("  ⚙ ", WARN), (ev["tool"], "bold white"), (f" {args}", "grey50")))
+                spinner.update(text=Text(f"running {ev['tool']}…", style="grey62"))
+            elif t == "approval_needed":
+                live.stop()
+                block(Text.assemble(("Approval required\n", f"bold {WARN}"),
+                                    (ev["tool"], "bold white"), (f"  {ev['args']}", "grey70")), WARN)
+                approved = Confirm.ask(f"[{WARN}]Allow this action?[/]")
                 session.resolve_approval(ev["call_id"], approved)
-                
-                if approved:
-                    console.print("[green]Action approved.[/green]")
-                else:
-                    console.print("[red]Action denied.[/red]")
-                
-                # Resume live display
+                section("approved" if approved else "denied", GREEN if approved else RED)
                 live.start()
             elif t == "tool_result":
                 if not ev["success"]:
-                    console.print(f"[bold red]Tool Failed:[/bold red] {ev['output'][:500]}")
+                    console.print(Text.assemble(("  ✗ ", RED), (ev["output"][:500], RED)))
             elif t == "step_done":
-                console.print(f"[bold green]✓ Step Done:[/bold green] {ev['summary']}")
+                if ev.get("summary"):
+                    block(Markdown(ev["summary"]), GREEN)
             elif t == "session_done":
                 live.stop()
-                if ev['status'] == 'done':
-                    pass
-                elif ev['status'] == 'cancelled':
-                    console.print("\n[bold yellow]Task Cancelled[/bold yellow]\n")
+                elapsed = f"{time.monotonic() - started:.1f}s"
+                if ev["status"] == "done":
+                    section("done", GREEN, elapsed)
+                elif ev["status"] == "cancelled":
+                    section("cancelled", WARN, elapsed)
                 else:
-                    console.print(f"\n[bold red]Task Failed:[/bold red] {session.error}\n")
+                    section("failed", RED, session.error or "")
             elif t == "error":
-                console.print(f"[bold red]Error:[/bold red] {ev['message']}")
+                block(Text(ev["message"], style=RED), RED)
 
     # Persist memory
     project_memory.record_session(session)
 
 
+async def choose_model() -> None:
+    import json
+    import questionary
+    try:
+        available = rag.get_ollama_status().get("available_models", [])
+    except Exception as e:
+        section("offline", RED, f"could not connect to Ollama: {e}")
+        return
+    if not available:
+        section("warning", WARN, "no Ollama models found — run `ollama pull <model>`")
+        return
+    current = core.config.LLM_MODEL if core.config.LLM_MODEL in available else available[0]
+    chosen = await questionary.select("Model:", choices=available, default=current).ask_async() or current
+
+    core.config.LLM_MODEL = chosen
+    settings = core.config.load_settings()
+    roles = settings.get("models", {})
+    # Only override roles the user hasn't pinned to a specific model.
+    for role, attr in (("router", "ROUTER_MODEL"), ("planner", "PLANNER_MODEL"), ("executor", "EXECUTOR_MODEL")):
+        if not roles.get(role):
+            setattr(core.config, attr, chosen)
+    settings["ollamaModel"] = chosen
+    try:
+        with open(core.config.SETTINGS_PATH, "w", encoding="utf-8") as f:
+            json.dump(settings, f, indent=2)
+    except Exception as e:
+        section("warning", WARN, f"could not save settings: {e}")
+
+
 async def main_loop():
     project_path = os.getcwd()
-    
-    console.print(Panel(
-        f"[bold cyan]TermiCursor CLI[/bold cyan]\n"
-        f"Working Directory: [green]{project_path}[/green]\n"
-        f"Type your prompt, or type [bold]/exit[/bold] to quit.",
-        title="Welcome",
-        border_style="cyan"
-    ))
-    
     db.init_db()
+    welcome(project_path)
 
-    import json
-    from core.config import SETTINGS_PATH
-    import core.config
-    
-    # Check Ollama status and prompt for model
     try:
-        ollama_status = rag.get_ollama_status()
-        available = ollama_status.get("available_models", [])
-        
-        if available:
-            import questionary
-            
-            # Let the user choose a model, defaulting to what's in config
-            current_model = core.config.LLM_MODEL
-            if current_model not in available and available:
-                current_model = available[0]
-                
-            chosen_model = await questionary.select(
-                "Select a model to use for this session:",
-                choices=available,
-                default=current_model
-            ).ask_async()
-            
-            if not chosen_model:
-                chosen_model = current_model
-            
-            # Update config in-memory for this session
-            core.config.LLM_MODEL = chosen_model
-            
-            # If the user hasn't set specific roles, update them too
-            settings = core.config.load_settings()
-            if not settings.get("models", {}).get("router"):
-                core.config.ROUTER_MODEL = chosen_model
-            if not settings.get("models", {}).get("planner"):
-                core.config.PLANNER_MODEL = chosen_model
-            if not settings.get("models", {}).get("executor"):
-                core.config.EXECUTOR_MODEL = chosen_model
-                
-            # Save the preference to settings.json
-            settings["ollamaModel"] = chosen_model
-            try:
-                with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
-                    json.dump(settings, f, indent=2)
-            except Exception as e:
-                console.print(f"[dim yellow]Could not save settings: {e}[/dim yellow]")
-                
-        if ollama_status.get("missing_models") and not available:
-            console.print(f"[yellow]Warning: Missing Ollama models:[/yellow] {ollama_status['missing_models']}")
-            console.print("You may need to pull them using `ollama run <model>` before continuing.")
-            
+        missing = rag.get_ollama_status().get("missing_models")
+        if missing:
+            section("warning", WARN, f"missing Ollama models: {missing} — run `ollama pull <model>`")
     except Exception as e:
-        console.print(f"[red]Could not connect to Ollama:[/red] {e}")
+        section("offline", RED, f"could not connect to Ollama: {e}")
 
-    # Load existing project memory summary
     mem = project_memory.open_project(project_path)
     if mem.get("session_count"):
-        console.print(f"[dim]Resumed project with {mem['session_count']} prior session(s).[/dim]")
-        if mem.get("last_goal"):
-            console.print(f"[dim]Last goal: {mem['last_goal']} ({mem['last_status']})[/dim]\n")
+        last = f" · last: {mem['last_goal']} ({mem['last_status']})" if mem.get("last_goal") else ""
+        console.print(Text(f"  resumed · {mem['session_count']} prior session(s){last}", style="grey50"))
 
-    prompt_session = PromptSession(style=style)
+    kb = KeyBindings()
+
+    @kb.add("tab")
+    def _(event):
+        state["agent"] = AGENTS[(AGENTS.index(state["agent"]) + 1) % len(AGENTS)]
+        event.app.invalidate()
+
+    def prompt_msg():
+        return FormattedText([(f"{agent_color()} bold", "┃ ")])
+
+    def toolbar():
+        parts = [
+            (f"{agent_color()} bold", " " + state["agent"].capitalize()),
+            ("#777777", " · "), (f"{GREEN} bold", core.config.EXECUTOR_MODEL),
+        ]
+        width = console.width  # re-read on every redraw, so it follows window resizes
+        if width >= 60:
+            parts.append(("#777777", f" {core.config.LLM_PROVIDER}"))
+        if width >= 80:
+            parts += [("#ffffff bold", "      tab"), ("#777777", " agents"),
+                      ("#ffffff bold", "  /help"), ("#777777", " commands ")]
+        return FormattedText(parts)
+
+    prompt_session = PromptSession(
+        key_bindings=kb,
+        bottom_toolbar=toolbar,
+        placeholder=FormattedText([("#666666", 'Ask anything... "Fix broken tests"')]),
+        style=Style.from_dict({"bottom-toolbar": "noreverse bg:#0d0d0d"}),
+    )
 
     while True:
         try:
-            # We use `await prompt_session.prompt_async` to not block asyncio
-            user_input = await prompt_session.prompt_async([('class:prompt', '❯ ')])
-            user_input = user_input.strip()
-            
+            console.print()
+            user_input = (await prompt_session.prompt_async(prompt_msg)).strip()
             if not user_input:
                 continue
-                
-            if user_input.lower() in ('/exit', '/quit'):
+            cmd = user_input.lower()
+            if cmd in ('/exit', '/quit'):
                 break
-            elif user_input.lower() == '/clear':
-                os.system('cls' if os.name == 'nt' else 'clear')
-                continue
-            elif user_input.lower() == '/help':
-                console.print(Panel(
-                    "/exit  - Quit the application\n"
-                    "/clear - Clear the terminal screen\n"
-                    "/help  - Show this help message",
-                    title="Commands"
-                ))
-                continue
-                
-            await run_agent(project_path, user_input)
-            
+            elif cmd == '/clear':
+                welcome(project_path)
+            elif cmd == '/help':
+                block(Text.from_markup(HELP), ACCENT, title="[bold]Commands[/]")
+            elif cmd == '/model':
+                await choose_model()
+            elif cmd in ('/plan', '/build', '/ask'):
+                state["agent"] = cmd[1:]
+                section(cmd[1:].capitalize(), agent_color(), "agent selected")
+            else:
+                await run_agent(project_path, user_input)
         except KeyboardInterrupt:
-            # Ctrl+C clears current input or skips
             continue
         except EOFError:
-            # Ctrl+D exits
             break
         except Exception as e:
-            console.print(f"[bold red]Unexpected Error:[/bold red] {e}")
-            
-    console.print("[dim]Goodbye![/dim]")
+            block(Text(f"Unexpected error: {e}", style=RED), RED)
+
+    console.print(Text("  bye", style="grey50"))
+
 
 def run():
     asyncio.run(main_loop())
+
 
 if __name__ == "__main__":
     run()

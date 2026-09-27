@@ -31,22 +31,30 @@ def load_settings():
     return {}
 
 
-_settings = load_settings()
-
-# ── Model / provider config ──
-LLM_PROVIDER = _settings.get("llmProvider", os.getenv("LLM_PROVIDER", "ollama")).lower()
-GROQ_API_KEY = _settings.get("groqApiKey", os.getenv("GROQ_API_KEY", ""))
-GROQ_MODEL = _settings.get("groqModel", os.getenv("GROQ_MODEL", "llama-3.1-8b-instant"))
-
 EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
-LLM_MODEL = _settings.get("ollamaModel", os.getenv("OLLAMA_LLM_MODEL", "qwen2.5-coder:3b"))
-OLLAMA_URL = _settings.get("ollamaUrl", os.getenv("OLLAMA_URL", "http://localhost:11434"))
 
-# Role-based models
-_models = _settings.get("models", {})
-ROUTER_MODEL = _models.get("router", LLM_MODEL)
-PLANNER_MODEL = _models.get("planner", LLM_MODEL)
-EXECUTOR_MODEL = _models.get("executor", LLM_MODEL)
+
+def reload_settings() -> None:
+    """(Re)read the model/provider settings. The server calls this per request so
+    Settings-page changes apply without a restart. Read these values as
+    `config.X` at use time, not via `from core.config import X`, or you get a
+    stale copy. Empty strings (e.g. a half-typed field) fall back to defaults."""
+    global LLM_PROVIDER, GROQ_API_KEY, GROQ_MODEL, LLM_MODEL, OLLAMA_URL
+    global ROUTER_MODEL, PLANNER_MODEL, EXECUTOR_MODEL
+    s = load_settings()
+    LLM_PROVIDER = (s.get("llmProvider") or os.getenv("LLM_PROVIDER") or "ollama").lower()
+    GROQ_API_KEY = s.get("groqApiKey") or os.getenv("GROQ_API_KEY") or ""
+    GROQ_MODEL = s.get("groqModel") or os.getenv("GROQ_MODEL") or "llama-3.1-8b-instant"
+    LLM_MODEL = s.get("ollamaModel") or os.getenv("OLLAMA_LLM_MODEL") or "qwen2.5-coder:3b"
+    OLLAMA_URL = s.get("ollamaUrl") or os.getenv("OLLAMA_URL") or "http://localhost:11434"
+    # Role-based models
+    models = s.get("models") or {}
+    ROUTER_MODEL = models.get("router") or LLM_MODEL
+    PLANNER_MODEL = models.get("planner") or LLM_MODEL
+    EXECUTOR_MODEL = models.get("executor") or LLM_MODEL
+
+
+reload_settings()
 
 # ── Agent loop bounds ──
 MAX_ITERATIONS_PER_STEP = int(os.getenv("MAX_ITERATIONS_PER_STEP", "12"))

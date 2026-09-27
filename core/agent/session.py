@@ -8,7 +8,8 @@ from dataclasses import dataclass, field
 from typing import Literal, Optional
 
 SessionStatus = Literal[
-    "created", "planning", "running", "blocked", "done", "error", "cancelled"
+    "created", "planning", "awaiting_plan_approval", "running", "blocked", "done",
+    "error", "cancelled"
 ]
 StepStatus = Literal["pending", "in_progress", "done", "failed"]
 
@@ -39,12 +40,28 @@ class AgentSession:
     created_at: float = field(default_factory=time.time)
     error: Optional[str] = None
     mode: Optional[str] = None  # "simple" | "complex", set by the router
+    # "build": route, plan if needed, code. "plan": always plan, pause for review,
+    # then code. "ask": answer directly with read-only tools, never plan or edit.
+    agent: str = "build"
 
     cancelled: bool = False
     memory_saved: bool = False  # guard so a session is recorded to memory once
 
     _approvals: dict[str, asyncio.Future] = field(default_factory=dict)
     _run_task: Optional[asyncio.Task] = None
+    _plan_review: Optional[asyncio.Future] = None
+
+    def await_plan_review(self) -> asyncio.Future:
+        self._plan_review = asyncio.get_event_loop().create_future()
+        return self._plan_review
+
+    def resolve_plan_review(self, decision: dict) -> bool:
+        """decision: {action: "approve"|"revise"|"reject", steps?, feedback?}"""
+        fut = self._plan_review
+        if fut is None or fut.done():
+            return False
+        fut.set_result(decision)
+        return True
 
     def set_steps(self, descriptions: list[str]) -> None:
         self.steps = [
@@ -73,6 +90,8 @@ class AgentSession:
         for fut in list(self._approvals.values()):
             if not fut.done():
                 fut.set_result(False)
+        if self._plan_review is not None and not self._plan_review.done():
+            self._plan_review.set_result({"action": "reject"})
         task = self._run_task
         if task is not None and not task.done():
             task.cancel()
@@ -84,6 +103,7 @@ class AgentSession:
             "goal": self.goal,
             "status": self.status,
             "mode": self.mode,
+            "agent": self.agent,
             "steps": self.tasklist_dict(),
             "error": self.error,
             "created_at": self.created_at,

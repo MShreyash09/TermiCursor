@@ -1,13 +1,17 @@
 import asyncio
+import hmac
+import os
 import sys
+from typing import Literal
 
 import requests
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel
+from starlette.requests import HTTPConnection
 
-from core.config import OLLAMA_URL
+from core import config
 from core.persistence import db
 from core.agent.session import AgentSession, SESSIONS
 from core.agent.loop import AgentLoop
@@ -24,11 +28,43 @@ if sys.platform.startswith("win"):
 
 app = FastAPI(title="Termicursor API")
 
-# Enable CORS for the React frontend
+# ── Access control ──
+# This server can run shell commands, so only the TermiCursor UI may talk to it.
+# The packaged app passes a random per-launch token (TERMICURSOR_TOKEN) that every
+# request must carry. Browsers always send an Origin header on cross-site requests
+# and WebSocket handshakes, so the origin check also stops other web pages when
+# running in dev without a token.
+TOKEN = os.getenv("TERMICURSOR_TOKEN", "")
+# "null" is the origin of the packaged app's file:// page. Sandboxed iframes on any
+# site also send "null", so it's only allowed when the token is enforced.
+ALLOWED_ORIGINS = ["http://localhost:5180", "http://127.0.0.1:5180"] + (["null"] if TOKEN else [])
+if not TOKEN:
+    print("WARNING: TERMICURSOR_TOKEN is not set; API auth is off (dev mode). "
+          "Only the Vite dev origin is accepted.")
+
+
+def is_authorized(conn: HTTPConnection) -> bool:
+    origin = conn.headers.get("origin")
+    if origin and origin not in ALLOWED_ORIGINS:
+        return False
+    if not TOKEN:
+        return True
+    supplied = conn.query_params.get("token") or conn.headers.get("x-termicursor-token") or ""
+    return hmac.compare_digest(supplied, TOKEN)
+
+
+@app.middleware("http")
+async def require_auth(request: Request, call_next):
+    # OPTIONS preflights carry no credentials; CORSMiddleware answers them.
+    if request.method != "OPTIONS" and not is_authorized(request):
+        return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    return await call_next(request)
+
+
+# Added after require_auth so it wraps it: 401s still carry CORS headers.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=ALLOWED_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -51,6 +87,13 @@ class PullRequest(BaseModel):
 class CreateSessionRequest(BaseModel):
     project_path: str
     goal: str
+    agent: Literal["build", "plan", "ask"] = "build"
+
+
+class PlanReviewRequest(BaseModel):
+    action: str  # "approve" | "revise" | "reject"
+    steps: list[str] | None = None
+    feedback: str | None = None
 
 
 class ApproveRequest(BaseModel):
@@ -66,14 +109,20 @@ class OpenProjectRequest(BaseModel):
 async def ingest(request: IngestRequest):
     # Run the blocking ingest function in a thread pool so it doesn't
     # block the async event loop (which would freeze the entire server).
-    result = await asyncio.to_thread(rag.ingest_codebase, request.project_path)
-    if result and result.get("status") == "error":
-        raise HTTPException(status_code=400, detail=result.get("message"))
-    return result
+    try:
+        result = await asyncio.to_thread(rag.ingest_codebase, request.project_path)
+        if result and result.get("status") == "error":
+            raise HTTPException(status_code=400, detail=result.get("message"))
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ingestion failed: {str(e)}")
 
 
 @app.get("/status")
 async def status():
+    config.reload_settings()  # pick up Settings-page changes (model, Ollama URL)
     return rag.get_ollama_status()
 
 
@@ -82,7 +131,7 @@ async def pull_model(request: PullRequest):
     def stream_pull():
         try:
             r = requests.post(
-                f"{OLLAMA_URL}/api/pull",
+                f"{config.OLLAMA_URL}/api/pull",
                 json={"name": request.name},
                 stream=True,
                 timeout=3600
@@ -108,7 +157,10 @@ async def open_project(request: OpenProjectRequest):
 # ── Agent sessions (replaces the old /query + /ws/chat tag-parsing flow) ──
 @app.post("/sessions")
 async def create_session(request: CreateSessionRequest):
-    session = AgentSession(project_path=request.project_path, goal=request.goal)
+    config.reload_settings()  # each run uses the current Settings, no restart needed
+    session = AgentSession(
+        project_path=request.project_path, goal=request.goal, agent=request.agent
+    )
     SESSIONS[session.id] = session
     db.upsert_session(session.to_dict())
     return {"session_id": session.id}
@@ -163,6 +215,18 @@ async def approve(session_id: str, request: ApproveRequest):
     return {"ok": True}
 
 
+@app.post("/sessions/{session_id}/plan")
+async def review_plan(session_id: str, request: PlanReviewRequest):
+    session = SESSIONS.get(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if request.action not in ("approve", "revise", "reject"):
+        raise HTTPException(status_code=400, detail="action must be approve, revise or reject")
+    if not session.resolve_plan_review(request.model_dump()):
+        raise HTTPException(status_code=400, detail="No plan awaiting review")
+    return {"ok": True}
+
+
 @app.post("/sessions/{session_id}/cancel")
 async def cancel(session_id: str):
     session = SESSIONS.get(session_id)
@@ -175,6 +239,10 @@ async def cancel(session_id: str):
 
 @app.websocket("/ws/agent/{session_id}")
 async def ws_agent(websocket: WebSocket, session_id: str):
+    # HTTP middleware doesn't see WebSocket handshakes, so check here.
+    if not is_authorized(websocket):
+        await websocket.close(code=1008)
+        return
     await websocket.accept()
     session = SESSIONS.get(session_id)
     if session is None:

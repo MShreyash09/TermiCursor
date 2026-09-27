@@ -1,5 +1,6 @@
 import { FileText, Terminal, FilePlus, Trash2, Image, StickyNote, Video } from 'lucide-react';
 import type { AgentArtifact } from '../../types/agent';
+import { backendUrl } from '../../backend';
 
 const KIND_ICON = (a: AgentArtifact) => {
   switch (a.kind) {
@@ -31,7 +32,7 @@ export default function ArtifactTrail({ artifacts, backendPort }: Props) {
       <ul className="px-4 pb-3 space-y-1">
         {shown.map((a) => {
           const href = a.file
-            ? `http://127.0.0.1:${backendPort}/sessions/${a.session_id}/artifacts/${a.file}`
+            ? backendUrl(backendPort, `/sessions/${a.session_id}/artifacts/${a.file}`)
             : undefined;
           const inner = (
             <span className="flex items-center gap-2 text-xs text-gray-300 truncate">

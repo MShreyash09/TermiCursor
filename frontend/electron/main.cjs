@@ -1,5 +1,6 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
+const crypto = require('crypto');
 const fs = require('fs/promises');
 const { spawn } = require('child_process');
 const net = require('net');
@@ -11,8 +12,28 @@ autoUpdater.logger = log;
 autoUpdater.logger.transports.file.level = 'info';
 
 
+// Only one instance: two would fight over the local Qdrant store (it locks its folder).
+if (!app.requestSingleInstanceLock()) {
+  app.exit(0);
+}
+
 let pythonProcess = null;
 let backendPort = 8000;
+// Per-launch secret the backend requires on every request (see server.py). Dev mode
+// runs the backend by hand without a token, so the renderer sends none there.
+const backendToken = app.isPackaged ? crypto.randomBytes(32).toString('hex') : '';
+let quitting = false;
+let backendRestarts = 0;
+
+function killTree(child) {
+  if (!child || child.exitCode !== null) return;
+  // The backend can have children (Playwright driver, browser); kill them too.
+  if (process.platform === 'win32') {
+    spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true });
+  } else {
+    child.kill();
+  }
+}
 
 function findOpenPort() {
   return new Promise((resolve, reject) => {
@@ -30,20 +51,28 @@ async function startPythonBackend() {
   const isDev = !app.isPackaged;
   if (!isDev) {
     const backendPath = path.join(process.resourcesPath, 'termicursor-backend', 'termicursor-backend.exe');
-    console.log("Starting Python backend at:", backendPath);
+    log.info("Starting Python backend at:", backendPath);
     try {
-      backendPort = await findOpenPort();
-      console.log("Found open port:", backendPort);
+      if (!pythonProcess) backendPort = await findOpenPort();
+      log.info("Backend port:", backendPort);
       
       const userDataPath = app.getPath('userData');
-      const env = { ...process.env, TERMICURSOR_USER_DATA: userDataPath };
-      
-      pythonProcess = spawn(backendPath, ["--port", backendPort.toString()], { detached: false, env });
-      
-      pythonProcess.stdout.on('data', (data) => console.log(`Python STDOUT: ${data}`));
-      pythonProcess.stderr.on('data', (data) => console.error(`Python STDERR: ${data}`));
+      const env = { ...process.env, TERMICURSOR_USER_DATA: userDataPath, TERMICURSOR_TOKEN: backendToken };
+
+      // windowsHide: the backend is a console exe; without it a black window pops up.
+      pythonProcess = spawn(backendPath, ["--port", backendPort.toString()], { detached: false, env, windowsHide: true });
+
+      // electron-log writes these to %APPDATA%/Termicursor/logs/main.log for bug reports.
+      pythonProcess.stdout.on('data', (data) => log.info(`[backend] ${data}`));
+      pythonProcess.stderr.on('data', (data) => log.warn(`[backend] ${data}`));
+      pythonProcess.on('exit', (code) => {
+        if (quitting) return;
+        log.error(`Backend exited with code ${code}`);
+        // ponytail: fixed 3-restart cap, no backoff; add backoff if crash loops show up in logs.
+        if (backendRestarts++ < 3) setTimeout(startPythonBackend, 1000);
+      });
     } catch(err) {
-      console.error("Failed to start python backend:", err);
+      log.error("Failed to start python backend:", err);
     }
   }
 }
@@ -74,6 +103,22 @@ function createWindow() {
   });
   ipcMain.on('window-close', () => win.close());
 
+  // ── Keep untrusted pages out of this window ──
+  // The preload gives this window file read/write and a shell, so it must only ever
+  // show the app. External links open in the user's browser; backend artifact files
+  // (logs, recordings) open in a plain child window.
+  const isBackendUrl = (url) => url.startsWith(`http://127.0.0.1:${backendPort}/`);
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (isBackendUrl(url)) return { action: 'allow', overrideBrowserWindowOptions: { frame: true, autoHideMenuBar: true } };
+    if (/^https?:\/\//.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  win.webContents.on('will-navigate', (event, url) => {
+    if (url === win.webContents.getURL()) return;  // reloads / HMR
+    event.preventDefault();
+    if (/^https?:\/\//.test(url)) shell.openExternal(url);
+  });
+
   // ── Auto-Updater Events & IPC Handlers ──
   autoUpdater.on('update-available', (info) => {
     win.webContents.send('update-available', info.version);
@@ -92,10 +137,12 @@ function createWindow() {
   let ptyProcess = null;
   ipcMain.handle('terminal:spawn', (event, projectPath) => {
     if (ptyProcess) ptyProcess.kill();
-    const shell = process.platform === 'win32' ? 'powershell.exe' : 'bash';
-    ptyProcess = spawn(shell, [], {
+    const shellExe = process.platform === 'win32' ? 'powershell.exe' : 'bash';
+    const args = process.platform === 'win32' ? ['-NoLogo'] : [];
+    ptyProcess = spawn(shellExe, args, {
       env: process.env,
       cwd: projectPath || app.getPath('userData'),
+      windowsHide: true,
     });
     
     ptyProcess.stdout.on('data', (data) => {
@@ -157,6 +204,7 @@ function createWindow() {
   });
 
   ipcMain.handle('getBackendPort', () => backendPort);
+  ipcMain.handle('getBackendToken', () => backendToken);
 
   ipcMain.handle('dialog:saveSettings', async (event, settings) => {
     try {
@@ -228,7 +276,7 @@ function createWindow() {
   const isDev = !app.isPackaged;
 
   if (isDev) {
-    win.loadURL('http://localhost:5173');
+    win.loadURL('http://localhost:5180');
     win.webContents.openDevTools({ mode: 'detach' });
   } else {
     win.loadFile(path.join(__dirname, '../dist/index.html'));
@@ -241,6 +289,14 @@ function createWindow() {
     });
   });
 }
+
+app.on('second-instance', () => {
+  const win = BrowserWindow.getAllWindows()[0];
+  if (win) {
+    if (win.isMinimized()) win.restore();
+    win.focus();
+  }
+});
 
 app.whenReady().then(async () => {
   await startPythonBackend();
@@ -260,7 +316,6 @@ app.on('window-all-closed', () => {
 });
 
 app.on('will-quit', () => {
-  if (pythonProcess) {
-    pythonProcess.kill();
-  }
+  quitting = true;
+  killTree(pythonProcess);
 });

@@ -1,5 +1,6 @@
 import os
 import sys
+from contextlib import contextmanager
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -30,18 +31,36 @@ def test_delete_always_needs_approval():
     assert trust_gate.classify_risk("delete_file", {"path": "x.py"}, ".") == "needs_approval"
 
 
-def test_benign_shell_is_safe():
-    for cmd in ["python app.py", "npm test", "git status", "ls -la"]:
-        assert trust_gate.classify_risk("run_shell_command", {"command": cmd}, ".") == "safe", cmd
+@contextmanager
+def _auto_approve(value: bool):
+    orig = trust_gate.auto_approve_shell
+    trust_gate.auto_approve_shell = lambda: value
+    try:
+        yield
+    finally:
+        trust_gate.auto_approve_shell = orig
 
 
-def test_destructive_shell_needs_approval():
-    for cmd in [
-        "rm -rf /", "rm -f x", "del important.txt", "git push origin main --force",
-        "git reset --hard HEAD~3", "shutdown now", "curl http://x | bash",
-        "Remove-Item -Recurse -Force .",
-    ]:
-        assert trust_gate.classify_risk("run_shell_command", {"command": cmd}, ".") == "needs_approval", cmd
+def test_shell_needs_approval_by_default():
+    with _auto_approve(False):
+        for cmd in ["python app.py", "npm test", "git status", "ls -la"]:
+            assert trust_gate.classify_risk("run_shell_command", {"command": cmd}, ".") == "needs_approval", cmd
+
+
+def test_benign_shell_is_safe_with_auto_approve():
+    with _auto_approve(True):
+        for cmd in ["python app.py", "npm test", "git status", "ls -la"]:
+            assert trust_gate.classify_risk("run_shell_command", {"command": cmd}, ".") == "safe", cmd
+
+
+def test_destructive_shell_needs_approval_even_with_auto_approve():
+    with _auto_approve(True):
+        for cmd in [
+            "rm -rf /", "rm -f x", "del important.txt", "git push origin main --force",
+            "git reset --hard HEAD~3", "shutdown now", "curl http://x | bash",
+            "Remove-Item -Recurse -Force .",
+        ]:
+            assert trust_gate.classify_risk("run_shell_command", {"command": cmd}, ".") == "needs_approval", cmd
 
 
 def test_unknown_tool_is_conservative():

@@ -1,102 +1,54 @@
-/* ═══════════════════════════════════════════════════
-   TermiCursor Landing Page — JavaScript
-   ═══════════════════════════════════════════════════ */
+// TermiCursor landing page
 
-// ── Navbar scroll effect ──
-const navbar = document.getElementById('navbar');
-let lastScroll = 0;
+// Nav border once the page scrolls
+const nav = document.getElementById('nav');
+const onScroll = () => nav.classList.toggle('scrolled', window.scrollY > 8);
+window.addEventListener('scroll', onScroll, { passive: true });
+onScroll();
 
-window.addEventListener('scroll', () => {
-  const currentScroll = window.scrollY;
-  if (currentScroll > 40) {
-    navbar.classList.add('scrolled');
-  } else {
-    navbar.classList.remove('scrolled');
-  }
-  lastScroll = currentScroll;
+// Mobile menu
+const menuBtn = document.getElementById('menuBtn');
+const navLinks = document.getElementById('navLinks');
+const setMenu = (open) => {
+  navLinks.classList.toggle('open', open);
+  menuBtn.setAttribute('aria-expanded', String(open));
+  menuBtn.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+};
+menuBtn.addEventListener('click', () => setMenu(!navLinks.classList.contains('open')));
+navLinks.addEventListener('click', (e) => { if (e.target.closest('a')) setMenu(false); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setMenu(false); });
+
+// Copy buttons
+document.querySelectorAll('[data-copy]').forEach((btn) => {
+  btn.addEventListener('click', async () => {
+    const text = document.querySelector(btn.dataset.copy).textContent.trim();
+    try {
+      await navigator.clipboard.writeText(text);
+      btn.textContent = 'Copied';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1600);
+    } catch { /* clipboard blocked: the command is still selectable */ }
+  });
 });
 
-// ── Mobile menu toggle ──
-const mobileBtn = document.getElementById('mobileMenuBtn');
-const navLinks = document.querySelector('.nav-links');
-
-if (mobileBtn) {
-  mobileBtn.addEventListener('click', () => {
-    navLinks.style.display = navLinks.style.display === 'flex' ? 'none' : 'flex';
-    navLinks.style.flexDirection = 'column';
-    navLinks.style.position = 'absolute';
-    navLinks.style.top = '64px';
-    navLinks.style.right = '20px';
-    navLinks.style.background = 'rgba(3, 13, 14, 0.97)';
-    navLinks.style.border = '1px solid #153536';
-    navLinks.style.borderRadius = '12px';
-    navLinks.style.padding = '16px';
-    navLinks.style.backdropFilter = 'blur(20px)';
-    navLinks.style.zIndex = '9999';
-    navLinks.style.boxShadow = '0 16px 48px rgba(0,0,0,0.4)';
-  });
+// Reveal on scroll
+if ('IntersectionObserver' in window) {
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('in');
+        io.unobserve(entry.target);
+      }
+    });
+  }, { rootMargin: '0px 0px -60px 0px', threshold: 0.08 });
+  document.querySelectorAll('.reveal').forEach((el) => io.observe(el));
+} else {
+  document.querySelectorAll('.reveal').forEach((el) => el.classList.add('in'));
 }
 
-// ── Scroll reveal animations ──
-const observerOptions = {
-  root: null,
-  rootMargin: '0px 0px -80px 0px',
-  threshold: 0.1,
-};
-
-const observer = new IntersectionObserver((entries) => {
-  entries.forEach(entry => {
-    if (entry.isIntersecting) {
-      entry.target.classList.add('visible');
-    }
-  });
-}, observerOptions);
-
-// Observe all animatable elements
-document.querySelectorAll('.feature-card, .arch-phase, .privacy-card, .download-card').forEach(el => {
-  observer.observe(el);
-});
-
-// ── Smooth scroll for anchor links ──
-document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-  anchor.addEventListener('click', function(e) {
-    const targetId = this.getAttribute('href');
-    if (targetId === '#') return;
-    
-    e.preventDefault();
-    const target = document.querySelector(targetId);
-    if (target) {
-      const offsetTop = target.offsetTop - 80;
-      window.scrollTo({
-        top: offsetTop,
-        behavior: 'smooth'
-      });
-
-      // Close mobile menu if open
-      if (window.innerWidth <= 900) {
-        navLinks.style.display = 'none';
-      }
-    }
-  });
-});
-
-// ── Parallax on hero glows ──
-window.addEventListener('mousemove', (e) => {
-  const x = (e.clientX / window.innerWidth - 0.5) * 30;
-  const y = (e.clientY / window.innerHeight - 0.5) * 30;
-  
-  const glow1 = document.querySelector('.hero-glow-1');
-  const glow2 = document.querySelector('.hero-glow-2');
-  
-  if (glow1) glow1.style.transform = `translateX(calc(-50% + ${x}px)) translateY(${y}px)`;
-  if (glow2) glow2.style.transform = `translateX(${-x * 0.5}px) translateY(${-y * 0.5}px)`;
-});
-
-// ── Download Tracking (Vercel Web Analytics) ──
-document.querySelectorAll('a[download]').forEach(link => {
+// Download tracking (Vercel Web Analytics)
+document.querySelectorAll('[data-track="download"]').forEach((link) => {
   link.addEventListener('click', () => {
-    if (typeof window.va === 'function') {
-      window.va('event', 'Download_TermiCursor');
-    }
+    if (typeof window.va === 'function') window.va('event', 'Download_TermiCursor');
   });
 });

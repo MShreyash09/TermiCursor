@@ -5,6 +5,7 @@ server streams over the WebSocket.
 Event shapes (all have a "type"):
   mode            {mode: "simple"|"complex"}
   plan            {steps: [...]}
+  plan_review     {steps: [...]}   (plan mode: waiting for approve/revise/reject)
   task_update     {step_id, status, description}
   thought         {step_id, text}
   tool_call       {step_id, call_id, tool, args, risk}
@@ -43,6 +44,7 @@ from core.artifacts.store import ArtifactStore
 # NOT dedup run_shell_command — re-running a build/test command after an edit is
 # a legitimate, common pattern.
 _DEDUP_TOOLS = {"write_file", "delete_file"}
+READ_ONLY_TOOLS = {"read_file", "list_dir", "search_codebase"}
 
 
 def _action_sig(action) -> str:
@@ -65,6 +67,9 @@ class AgentLoop:
         self.tools: dict[str, Tool] = build_registry(
             session.project_path, session.id, self.artifacts.dir
         )
+        if session.agent == "ask":
+            # Ask mode is read-only: it can look around the codebase but never change it.
+            self.tools = {k: v for k, v in self.tools.items() if k in READ_ONLY_TOOLS}
 
     async def run(self) -> AsyncGenerator[dict, None]:
         """Runs the loop and, on every exit path (done, error, cancelled, or an
@@ -101,7 +106,12 @@ class AgentLoop:
                 return
 
             # ── Route: simple (fast, direct) vs complex (plan then execute) ──
-            mode = await classify_intent(s.goal, self.router_llm)
+            if s.agent == "ask":
+                mode = "simple"
+            elif s.agent == "plan":
+                mode = "complex"
+            else:
+                mode = await classify_intent(s.goal, self.router_llm)
             s.mode = mode
             yield {"type": "mode", "mode": mode}
             if s.cancelled:
@@ -116,14 +126,42 @@ class AgentLoop:
             # ── Plan phase (complex only) ──
             s.status = "planning"
             db.upsert_session(s.to_dict())
-            steps = await decompose_task(s.goal, s.project_path, self.planner_llm)
-            if s.cancelled:
+            goal = s.goal
+            while True:
+                steps = await decompose_task(goal, s.project_path, self.planner_llm)
+                if s.cancelled:
+                    s.status = "cancelled"
+                    db.upsert_session(s.to_dict())
+                    yield {"type": "session_done", "status": "cancelled"}
+                    return
+                s.set_steps(steps)
+                db.replace_tasks(s.id, s.tasklist_dict())
+                if s.agent != "plan":
+                    break
+                # Plan mode: hand the plan to the user and wait for a decision.
+                s.status = "awaiting_plan_approval"
+                db.upsert_session(s.to_dict())
+                fut = s.await_plan_review()
+                yield {"type": "plan_review", "steps": s.tasklist_dict()}
+                decision = await fut
+                action = decision.get("action")
+                if action == "approve":
+                    edited = [str(x).strip() for x in decision.get("steps") or [] if str(x).strip()]
+                    if edited:
+                        s.set_steps(edited)
+                        db.replace_tasks(s.id, s.tasklist_dict())
+                    break
+                if action == "revise":
+                    prev = "\n".join(f"{i+1}. {st.description}" for i, st in enumerate(s.steps))
+                    goal = (f"{s.goal}\n\nA previous plan was:\n{prev}\n\n"
+                            f"The user asked for these changes to the plan: {decision.get('feedback', '')}")
+                    s.status = "planning"
+                    yield {"type": "mode", "mode": "complex"}
+                    continue
                 s.status = "cancelled"
                 db.upsert_session(s.to_dict())
                 yield {"type": "session_done", "status": "cancelled"}
                 return
-            s.set_steps(steps)
-            db.replace_tasks(s.id, s.tasklist_dict())
             self.artifacts.save_tasklist_snapshot(s.tasklist_dict())
             yield {"type": "plan", "steps": s.tasklist_dict()}
 

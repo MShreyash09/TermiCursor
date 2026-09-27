@@ -4,6 +4,7 @@ import os
 from pydantic import BaseModel, Field
 
 from .base import Tool, ToolResult
+from .fs_tools import _resolve_in_project
 from core.config import SHELL_TIMEOUT_SEC
 
 _MAX_OUTPUT_CHARS = 20_000
@@ -24,7 +25,10 @@ class RunShellCommandTool(Tool):
     args_model = RunShellArgs
 
     async def run(self, args: RunShellArgs, *, project_root: str) -> ToolResult:
-        cwd = os.path.normpath(os.path.join(os.path.abspath(project_root), args.cwd))
+        try:
+            cwd = _resolve_in_project(project_root, args.cwd)
+        except ValueError as e:
+            return ToolResult(success=False, error=str(e))
         if not os.path.isdir(cwd):
             return ToolResult(success=False, error=f"Working directory does not exist: {args.cwd}")
 

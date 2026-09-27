@@ -1,7 +1,8 @@
 import { useCallback, useRef, useState } from 'react';
 import type {
-  AgentEvent, AgentMode, TaskStep, AgentArtifact, LogLine, PendingApproval, SessionStatus,
+  AgentKind, AgentEvent, AgentMode, TaskStep, AgentArtifact, LogLine, PendingApproval, SessionStatus,
 } from '../types/agent';
+import { backendUrl } from '../backend';
 
 interface UseAgentSocket {
   sessionId: string | null;
@@ -12,7 +13,8 @@ interface UseAgentSocket {
   log: LogLine[];
   pendingApproval: PendingApproval | null;
   isRunning: boolean;
-  start: (goal: string) => Promise<void>;
+  start: (goal: string, agent?: AgentKind) => Promise<void>;
+  reviewPlan: (action: 'approve' | 'revise' | 'reject', opts?: { steps?: string[]; feedback?: string }) => Promise<void>;
   respondApproval: (approved: boolean) => Promise<void>;
   stop: () => Promise<void>;
   reset: () => void;
@@ -42,7 +44,7 @@ export function useAgentSocket(backendPort: number, projectPath: string): UseAge
   // arrives as a WS event. One refresh after the run ends picks it up.
   const refreshArtifacts = useCallback(async (id: string) => {
     try {
-      const resp = await fetch(`http://127.0.0.1:${backendPort}/sessions/${id}/artifacts`);
+      const resp = await fetch(backendUrl(backendPort, `/sessions/${id}/artifacts`));
       if (!resp.ok) return;
       const { artifacts: fetched } = await resp.json();
       if (!Array.isArray(fetched)) return;
@@ -67,6 +69,11 @@ export function useAgentSocket(backendPort: number, projectPath: string): UseAge
         setSteps(ev.steps);
         setStatus('running');
         pushLog({ kind: 'info', text: `Planned ${ev.steps.length} step(s).` });
+        break;
+      case 'plan_review':
+        setSteps(ev.steps);
+        setStatus('awaiting_plan_approval');
+        pushLog({ kind: 'info', text: `Plan ready (${ev.steps.length} step(s)) — review it before coding starts.` });
         break;
       case 'task_update':
         setSteps(prev => prev.map(s =>
@@ -102,7 +109,7 @@ export function useAgentSocket(backendPort: number, projectPath: string): UseAge
     }
   }, [pushLog]);
 
-  const start = useCallback(async (goal: string) => {
+  const start = useCallback(async (goal: string, agent: AgentKind = 'build') => {
     if (!projectPath) {
       pushLog({ kind: 'error', text: 'No project folder is open.' });
       return;
@@ -114,10 +121,10 @@ export function useAgentSocket(backendPort: number, projectPath: string): UseAge
 
     let id: string;
     try {
-      const resp = await fetch(`http://127.0.0.1:${backendPort}/sessions`, {
+      const resp = await fetch(backendUrl(backendPort, '/sessions'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ project_path: projectPath, goal }),
+        body: JSON.stringify({ project_path: projectPath, goal, agent }),
       });
       if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
       id = (await resp.json()).session_id;
@@ -129,7 +136,7 @@ export function useAgentSocket(backendPort: number, projectPath: string): UseAge
     setSessionId(id);
     sessionRef.current = id;
 
-    const ws = new WebSocket(`ws://127.0.0.1:${backendPort}/ws/agent/${id}`);
+    const ws = new WebSocket(backendUrl(backendPort, `/ws/agent/${id}`, { ws: true }));
     wsRef.current = ws;
     ws.onmessage = (event) => {
       try { applyEvent(JSON.parse(event.data) as AgentEvent); } catch { /* ignore */ }
@@ -145,7 +152,7 @@ export function useAgentSocket(backendPort: number, projectPath: string): UseAge
       // "Working…" — flip out of the running state so the input re-enables.
       if (!sawDoneRef.current) {
         setStatus(prev =>
-          (prev === 'planning' || prev === 'running' || prev === 'blocked') ? 'error' : prev);
+          (prev === 'planning' || prev === 'running' || prev === 'blocked' || prev === 'awaiting_plan_approval') ? 'error' : prev);
         setPendingApproval(null);
         pushLog({ kind: 'error', text: 'Run ended unexpectedly (connection closed).' });
       }
@@ -159,7 +166,7 @@ export function useAgentSocket(backendPort: number, projectPath: string): UseAge
     setPendingApproval(null);
     setStatus('running');
     try {
-      await fetch(`http://127.0.0.1:${backendPort}/sessions/${id}/approve`, {
+      await fetch(backendUrl(backendPort, `/sessions/${id}/approve`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ call_id: approval.call_id, approved }),
@@ -169,6 +176,29 @@ export function useAgentSocket(backendPort: number, projectPath: string): UseAge
       pushLog({ kind: 'error', text: `Approval failed: ${e.message}` });
     }
   }, [backendPort, pendingApproval, pushLog]);
+
+  const reviewPlan = useCallback(async (
+    action: 'approve' | 'revise' | 'reject',
+    opts: { steps?: string[]; feedback?: string } = {},
+  ) => {
+    const id = sessionRef.current;
+    if (!id) return;
+    setStatus(action === 'approve' ? 'running' : action === 'revise' ? 'planning' : 'cancelled');
+    pushLog({
+      kind: 'info',
+      text: action === 'approve' ? 'Plan approved — starting to code.'
+        : action === 'revise' ? `Revising plan: ${opts.feedback ?? ''}` : 'Plan rejected.',
+    });
+    try {
+      await fetch(backendUrl(backendPort, `/sessions/${id}/plan`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, ...opts }),
+      });
+    } catch (e: any) {
+      pushLog({ kind: 'error', text: `Plan review failed: ${e.message}` });
+    }
+  }, [backendPort, pushLog]);
 
   const stop = useCallback(async () => {
     const id = sessionRef.current;
@@ -180,7 +210,7 @@ export function useAgentSocket(backendPort: number, projectPath: string): UseAge
     pushLog({ kind: 'info', text: 'Stopped by user.' });
     if (!id) return;
     try {
-      await fetch(`http://127.0.0.1:${backendPort}/sessions/${id}/cancel`, { method: 'POST' });
+      await fetch(backendUrl(backendPort, `/sessions/${id}/cancel`), { method: 'POST' });
     } catch { /* backend may already have torn the run down */ }
     // The backend finishes closing the browser (and flushing its recording)
     // asynchronously after cancellation; give it a moment before refreshing.
@@ -194,9 +224,10 @@ export function useAgentSocket(backendPort: number, projectPath: string): UseAge
     setSteps([]); setArtifacts([]); setLog([]); setPendingApproval(null);
   }, []);
 
-  const isRunning = status === 'planning' || status === 'running' || status === 'blocked';
+  const isRunning = status === 'planning' || status === 'running' || status === 'blocked'
+    || status === 'awaiting_plan_approval';
   return {
     sessionId, status, mode, steps, artifacts, log, pendingApproval, isRunning,
-    start, respondApproval, stop, reset,
+    start, reviewPlan, respondApproval, stop, reset,
   };
 }

@@ -1,16 +1,41 @@
-# TermiCursor - Local, Offline Agentic Coding Assistant
+# TermiCursor - Local Agentic Coding Assistant
 
-TermiCursor is a fully offline, GUI based AI coding **agent** for local models. Give it a
-goal — it plans the work (for anything non-trivial), then edits files, searches your
-codebase, and runs shell commands to accomplish it, pausing on risky actions for your
-approval and streaming its plan/thoughts/results live. Simple questions ("how many code
-files are here?") skip planning entirely and answer directly. It guarantees complete
-privacy by processing all code files, embeddings, and inference locally on your PC.
+TermiCursor is a GUI-based AI coding **agent** that runs on local models. Give it a
+goal: it plans the work (for anything non-trivial), then edits files, searches your
+codebase, and runs shell commands to accomplish it. It asks for your approval before
+running commands and streams its plan, thoughts and results live. Three modes: **Ask**
+(answers questions, read-only), **Plan** (you review the plan before any code is
+written) and **Build** (plans if needed, then codes). With the default Ollama setup,
+your code, embeddings and inference stay on your PC.
 
 ## 🚀 Download
 
-You can download the latest Windows installer for TermiCursor here:
-**[Download TermiCursor Setup (v0.0.0)](https://github.com/MShreyash09/TermiCursor/releases/download/v0.0.0/Termicursor.Setup.0.0.0.exe)**
+**[Download the latest Windows installer](https://github.com/MShreyash09/TermiCursor/releases/latest)**
+
+1. Install [Ollama](https://ollama.com/download) and make sure it's running.
+2. Install and open TermiCursor. The status bar shows **Ollama Ready** once it can reach Ollama.
+3. If it shows **Models Missing**, click **Install Now**. The default models
+   (`qwen2.5-coder:3b` and `nomic-embed-text`) are about 2.2 GB in total.
+4. Open a project folder and give the agent a task.
+
+Requirements: Windows 10/11 and 8 GB RAM recommended. The browser tools use the Microsoft Edge that
+comes with Windows.
+
+### What goes over the network
+- Checking GitHub for TermiCursor updates.
+- Downloading models through Ollama (only when you click Install).
+- Web pages the agent opens with its browser tools.
+- **Groq (optional):** if you choose Groq as the LLM provider in Settings, your prompts and
+  the code the agent reads are sent to Groq's cloud API.
+
+### Safety
+- The agent asks before **every** shell command and before deleting files or writing outside
+  the project. Settings → *Auto-approve shell commands* skips the prompt, except for destructive
+  commands (`rm`, `del`, `git reset --hard`…), which always ask.
+- The app's local backend only accepts requests carrying a secret generated at each launch,
+  so other programs and web pages can't drive the agent.
+- Logs for bug reports: `%APPDATA%\Termicursor\logs\main.log`. See [SECURITY.md](SECURITY.md)
+  to report a vulnerability.
 
 ---
 
@@ -56,7 +81,7 @@ See [`core/`](core) for the implementation and the frontend's `AgentPanel` for t
 
 ##  Features
 
-*   **Complete Privacy:** 100% offline. No code or metadata leaves your host machine.
+*   **Private by Default:** With Ollama, code, embeddings and inference stay on your machine (see *What goes over the network* above).
 *   **Syntax-Aware Parsing:** Code-aware chunking ensures logical components (functions, classes) are kept intact.
 *   **Database Workspace Isolation:** Every project folder receives a unique path-hashed Qdrant collection to completely avoid data mix-ups.
 *   **Proactive Checks:** Validates model availability and connectivity to prevent standard connection tracebacks.
@@ -64,17 +89,17 @@ See [`core/`](core) for the implementation and the frontend's `AgentPanel` for t
 
 ---
 
-##  How to Run
+##  Development
 
 ### Command Options
-Ensure you are using the virtual environment containing the dependencies (`langchain`, `qdrant-client`, `langchain-ollama`).
+Requires Python 3.10+ (releases are built with 3.13) and Node 22. Dependencies are pinned in `requirements.txt`.
 
 ```powershell
 # 1. Create a venv
 python -m venv .venv
 
 # 2. Activate the virtual environment
-venv\scripts\activate
+.venv\Scripts\activate
 
 # 3. Install requirement file
 pip install -r requirements.txt
@@ -96,10 +121,24 @@ uvicorn server:app --reload
 # 6. Ingest (Index) the current directory codebase
 python main.py ingest .
 
-# 7. Run the agent on a goal (headless CLI; risky actions auto-deny — use the UI to approve)
+# 7. Run the agent on a goal (headless CLI; anything needing approval is auto-denied,
+#    including shell commands unless "autoApproveShell": true is in settings.json)
 python main.py run . "Create a Flask hello-world app and run it"
+
+# 8. Interactive terminal UI (asks you before running commands)
+python cli.py
+
+# Tests (offline; tests/live_* need a running Ollama)
+python -m pytest -q tests --ignore-glob="tests/live_*"
 ```
+
+In dev, the backend runs without the per-launch token (only the packaged app sets
+`TERMICURSOR_TOKEN`); it still rejects requests from any origin except the Vite dev server.
 
 The GUI (`npm run dev` in `frontend/`) is the primary way to use the agent — it shows
 the live plan, tool calls, approval prompts, and artifacts, and lets you stop a run
 mid-flight.
+
+## License
+
+[MIT](LICENSE)

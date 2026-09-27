@@ -11,6 +11,7 @@ import SettingsPage from './components/SettingsPage';
 import StatusBar from './components/StatusBar';
 import CommandPalette from './components/CommandPalette';
 import TerminalPanel from './components/TerminalPanel';
+import { backendUrl, setBackendToken } from './backend';
 
 function App() {
   const [projectPath, setProjectPath] = useState('');
@@ -117,11 +118,29 @@ function App() {
   }, []);
 
   const checkStatus = (port: number = backendPort) => {
-    fetch(`http://127.0.0.1:${port}/status`)
+    fetch(backendUrl(port, '/status'))
       .then(res => res.json())
       .then(data => setBackendStatus(data))
       .catch(e => console.error("Status check failed", e));
   };
+
+  // The packaged backend takes a few seconds to boot, and first-time users may
+  // still be installing/starting Ollama: keep polling until everything is ready.
+  useEffect(() => {
+    let cancelled = false;
+    let timer: number | undefined;
+    const poll = async () => {
+      const data = await fetch(backendUrl(backendPort, '/status'))
+        .then(res => (res.ok ? res.json() : null))
+        .catch(() => null);
+      if (cancelled) return;
+      if (data) setBackendStatus(data);
+      // Fast while the backend boots, slower while waiting on Ollama/models.
+      if (data?.status !== 'ok') timer = window.setTimeout(poll, data ? 5000 : 1000);
+    };
+    poll();
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [backendPort]);
 
   const handleInstallModels = async () => {
     if (!backendStatus?.missing_models || backendStatus.missing_models.length === 0) return;
@@ -130,7 +149,7 @@ function App() {
       setPullProgress(prev => ({ ...prev, [model]: 0 }));
 
       try {
-        const response = await fetch(`http://127.0.0.1:${backendPort}/pull`, {
+        const response = await fetch(backendUrl(backendPort, '/pull'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: model })
@@ -183,10 +202,11 @@ function App() {
   useEffect(() => {
     // @ts-ignore
     if (window.electronAPI && window.electronAPI.getBackendPort) {
-      // @ts-ignore
-      window.electronAPI.getBackendPort().then((port: number) => {
+      const api = (window as any).electronAPI;
+      // Token first: setting the port triggers the first requests.
+      Promise.all([api.getBackendToken?.() ?? '', api.getBackendPort()]).then(([token, port]: [string, number]) => {
+        setBackendToken(token);
         setBackendPort(port);
-        checkStatus(port);
       });
       // @ts-ignore
       window.electronAPI.loadSettings();
@@ -258,7 +278,7 @@ if __name__ == "__main__":
 
         setIsIngesting(true);
         try {
-          const response = await fetch(`http://127.0.0.1:${backendPort}/ingest`, {
+          const response = await fetch(backendUrl(backendPort, '/ingest'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ project_path: folderPath }),
@@ -266,13 +286,11 @@ if __name__ == "__main__":
           if (!response.ok) {
             const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
             console.error("Ingestion failed:", errorData);
-            alert(`Ingestion failed: ${errorData.detail || 'Unknown error'}. Please check that Ollama is running and models are pulled.`);
-            setProjectPath('');
+            alert(`Ingestion notice: ${errorData.detail || 'Unknown error'}. Please check that Ollama is running and models are pulled.`);
           }
         } catch (error) {
           console.error("Failed to auto-ingest folder:", error);
-          alert("Failed to connect to the backend server. Make sure 'uvicorn server:app --reload' is running.");
-          setProjectPath('');
+          alert("Couldn't reach the TermiCursor backend. Try restarting the app.");
         } finally {
           setIsIngesting(false);
         }
@@ -326,7 +344,7 @@ if __name__ == "__main__":
 
     setIsIngesting(true);
     try {
-      const response = await fetch(`http://127.0.0.1:${backendPort}/ingest`, {
+      const response = await fetch(backendUrl(backendPort, '/ingest'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ project_path: folderPath }),
@@ -334,13 +352,11 @@ if __name__ == "__main__":
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
         console.error("Ingestion failed:", errorData);
-        alert(`Ingestion failed: ${errorData.detail || 'Unknown error'}. Please check that Ollama is running and models are pulled.`);
-        setProjectPath('');
+        alert(`Ingestion notice: ${errorData.detail || 'Unknown error'}. Please check that Ollama is running and models are pulled.`);
       }
     } catch (error) {
       console.error("Failed to auto-ingest folder:", error);
-      alert("Failed to connect to the backend server. Make sure 'uvicorn server:app --reload' is running.");
-      setProjectPath('');
+      alert("Couldn't reach the TermiCursor backend. Try restarting the app.");
     } finally {
       setIsIngesting(false);
     }

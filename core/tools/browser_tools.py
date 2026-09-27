@@ -47,7 +47,12 @@ class _BrowserSession:
 
             os.makedirs(self.video_dir, exist_ok=True)
             self._playwright = await async_playwright().start()
-            self.browser = await self._playwright.chromium.launch()
+            try:
+                self.browser = await self._playwright.chromium.launch()
+            except Exception:
+                # The installer doesn't bundle Playwright's Chromium; fall back to
+                # the Edge that ships with Windows 10/11.
+                self.browser = await self._playwright.chromium.launch(channel="msedge")
             self.context = await self.browser.new_context(
                 record_video_dir=self.video_dir,
                 record_video_size={"width": 1280, "height": 800},

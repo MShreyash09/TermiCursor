@@ -56,12 +56,13 @@ export default function SettingsPage() {
     lineNumbers: true,
     bracketPairs: true,
     terminalShell: 'PowerShell',
-    ollamaModel: 'llama3.2',
+    ollamaModel: 'qwen2.5-coder:3b',
     ollamaUrl: 'http://localhost:11434',
     autoIngest: false,
     llmProvider: 'ollama',
     groqApiKey: '',
     groqModel: 'llama-3.1-8b-instant',
+    autoApproveShell: false,
   });
 
   
@@ -82,7 +83,6 @@ export default function SettingsPage() {
     if (window.electronAPI && window.electronAPI.saveSettings) {
       // @ts-ignore
       await window.electronAPI.saveSettings(newSettings);
-      alert("Settings saved! Restarting backend is recommended if changing LLM provider.");
     }
   };
 
@@ -170,7 +170,7 @@ export default function SettingsPage() {
       items: [
         {
           label: 'LLM Provider',
-          description: 'Choose between local Ollama or cloud Groq',
+          description: 'Local Ollama keeps everything on this PC. Groq is a cloud API: your prompts and the code the agent reads are sent to Groq.',
           control: <Dropdown value={settings.llmProvider} options={['ollama', 'groq']} onChange={(v) => updateSetting('llmProvider', v)} />,
         },
         {
@@ -188,7 +188,7 @@ export default function SettingsPage() {
         {
           label: 'Groq Model',
           description: 'Model to use on Groq',
-          control: <Dropdown value={settings.groqModel || 'llama-3.1-8b-instant'} options={['llama-3.1-8b-instant', 'llama3-70b-8192', 'mixtral-8x7b-32768']} onChange={(v) => updateSetting('groqModel', v)} />,
+          control: <Dropdown value={settings.groqModel || 'llama-3.1-8b-instant'} options={['llama-3.1-8b-instant', 'llama-3.3-70b-versatile']} onChange={(v) => updateSetting('groqModel', v)} />,
         },
         {
           label: 'Ollama Model',
@@ -213,6 +213,11 @@ export default function SettingsPage() {
               className="bg-[#0b2b2d] border border-[#1a4042] rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-[#2b6b69] w-52"
             />
           ),
+        },
+        {
+          label: 'Auto-approve shell commands',
+          description: 'Let the agent run commands without asking. Destructive ones (rm, del, git reset --hard…) always ask. Off is safer.',
+          control: <Toggle checked={settings.autoApproveShell} onChange={(v) => updateSetting('autoApproveShell', v)} />,
         },
         {
           label: 'Auto-Ingest on Open',

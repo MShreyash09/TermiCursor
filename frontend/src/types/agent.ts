@@ -2,7 +2,7 @@
 
 export type StepStatus = 'pending' | 'in_progress' | 'done' | 'failed';
 export type SessionStatus =
-  | 'created' | 'planning' | 'running' | 'blocked' | 'done' | 'error' | 'cancelled';
+  | 'created' | 'planning' | 'awaiting_plan_approval' | 'running' | 'blocked' | 'done' | 'error' | 'cancelled';
 export type AgentMode = 'simple' | 'complex';
 export type Risk = 'safe' | 'needs_approval';
 
@@ -26,6 +26,7 @@ export interface AgentArtifact {
 export type AgentEvent =
   | { type: 'mode'; mode: AgentMode }
   | { type: 'plan'; steps: TaskStep[] }
+  | { type: 'plan_review'; steps: TaskStep[] }
   | { type: 'task_update'; step_id: string; status: StepStatus; description: string }
   | { type: 'thought'; step_id: string; text: string }
   | { type: 'tool_call'; step_id: string; call_id: string; tool: string; args: Record<string, any>; risk: Risk }
@@ -60,3 +61,7 @@ export interface ProjectMemory {
   last_status: string | null;
   last_ended_at?: number | null;
 }
+
+// Build = plan-if-needed then code immediately; Plan = plan, wait for user review, then code;
+// Ask = answer questions directly, read-only.
+export type AgentKind = 'build' | 'plan' | 'ask';

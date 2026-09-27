@@ -1,161 +1,165 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Terminal } from 'xterm';
 import { FitAddon } from '@xterm/addon-fit';
+import { TerminalSquare, Trash2 } from 'lucide-react';
 import 'xterm/css/xterm.css';
 
 interface TerminalPanelProps {
   projectPath: string;
 }
 
+// TermiCursor palette: hacker green, black & white, red, blue, purple, golden orange.
+const THEME = {
+  background: '#000000',
+  foreground: '#e6e6e6',
+  cursor: '#39ff14',
+  cursorAccent: '#000000',
+  selectionBackground: '#39ff1433',
+  black: '#000000', brightBlack: '#6b6b6b',
+  red: '#ff4d4d', brightRed: '#ff7373',
+  green: '#39ff14', brightGreen: '#7dff5c',
+  yellow: '#ffb000', brightYellow: '#ffc94d',
+  blue: '#3d8bff', brightBlue: '#6aa8ff',
+  magenta: '#b877ff', brightMagenta: '#d0a3ff',
+  cyan: '#2fd6c3', brightCyan: '#6ee8da',
+  white: '#e6e6e6', brightWhite: '#ffffff',
+};
+
+// Always fall back to fonts Windows ships with so metrics stay clean.
+const fontStack = (family?: string) =>
+  `${family ? `"${family}", ` : ''}"Cascadia Mono", "Cascadia Code", Consolas, "Courier New", monospace`;
+
 export default function TerminalPanel({ projectPath }: TerminalPanelProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
+  const [size, setSize] = useState({ cols: 0, rows: 0 });
 
   useEffect(() => {
     if (!terminalRef.current) return;
-
-    let currentFontFamily = "Consolas, 'Courier New', monospace";
-    let currentFontSize = 13;
-
-    // Load initial settings
-    // @ts-ignore
-    if (window.electronAPI && window.electronAPI.loadSettings) {
-      // @ts-ignore
-      window.electronAPI.loadSettings().then(loaded => {
-        if (loaded) {
-          if (loaded.fontFamily) currentFontFamily = loaded.fontFamily;
-          if (loaded.fontSize) currentFontSize = parseInt(loaded.fontSize);
-
-          if (xtermRef.current) {
-            xtermRef.current.options.fontFamily = currentFontFamily;
-            xtermRef.current.options.fontSize = currentFontSize;
-          }
-        }
-      });
-
-      // @ts-ignore
-      window.electronAPI.onSettingsChanged?.((newSettings) => {
-        if (xtermRef.current) {
-          if (newSettings.fontFamily) {
-            currentFontFamily = newSettings.fontFamily;
-            xtermRef.current.options.fontFamily = currentFontFamily;
-          }
-          if (newSettings.fontSize) {
-            currentFontSize = parseInt(newSettings.fontSize);
-            xtermRef.current.options.fontSize = currentFontSize;
-          }
-        }
-      });
-    }
+    const api = (window as any).electronAPI;
 
     const term = new Terminal({
-      theme: {
-        background: '#09090b',
-        foreground: '#e5e7eb',
-        cursor: '#0ea5e9',
-        selectionBackground: '#1e3a8a',
-        black: '#000000',
-        red: '#ef4444',
-        green: '#22c55e',
-        yellow: '#eab308',
-        blue: '#3b82f6',
-        magenta: '#d946ef',
-        cyan: '#06b6d4',
-        white: '#ffffff'
-      },
-      fontFamily: currentFontFamily,
-      fontSize: currentFontSize,
-      letterSpacing: 1, // Use integer values for better rendering
-      lineHeight: 1.2, // Keep line-height > 1 to prevent text clipping
+      theme: THEME,
+      fontFamily: fontStack(),
+      fontSize: 13,
+      lineHeight: 1.15,
+      letterSpacing: 0,
       cursorBlink: true,
-      // Optional: Use DOM renderer if Canvas text rendering looks weird
-      // rendererType: 'dom' 
+      cursorStyle: 'bar',
+      scrollback: 5000,
+      allowProposedApi: true,
     });
-
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
-
     term.open(terminalRef.current);
-    
-    // Wait for fonts to load before fitting to ensure correct character dimensions
-    document.fonts.ready.then(() => {
-      fitAddon.fit();
-    });
     xtermRef.current = term;
 
-    // Window resize handling
-    const resizeObserver = new ResizeObserver(() => {
-      // Use requestAnimationFrame to ensure the container layout has updated
-      requestAnimationFrame(() => {
-        if (term.element && term.element.clientWidth > 0) {
-          fitAddon.fit();
-        }
-      });
-    });
+    const fit = () => {
+      if (term.element && term.element.clientWidth > 0) {
+        fitAddon.fit();
+        setSize({ cols: term.cols, rows: term.rows });
+      }
+    };
+    const applyFont = (s: any) => {
+      if (!s) return;
+      if (s.fontFamily) term.options.fontFamily = fontStack(s.fontFamily);
+      if (s.fontSize) term.options.fontSize = parseInt(s.fontSize);
+      fit();
+    };
+    api?.loadSettings?.().then(applyFont);
+    api?.onSettingsChanged?.(applyFont);
+    document.fonts.ready.then(fit);
+
+    const resizeObserver = new ResizeObserver(() => requestAnimationFrame(fit));
     resizeObserver.observe(terminalRef.current);
 
-    // Spawn backend process
-    // @ts-ignore
-    if (window.electronAPI?.spawnTerminal) {
-      // @ts-ignore
-      window.electronAPI.spawnTerminal(projectPath);
+    let unsubscribe: (() => void) | undefined;
+    if (api?.spawnTerminal) {
+      api.spawnTerminal(projectPath);
+      unsubscribe = api.onTerminalData((data: string) => term.write(data));
 
-      // Setup incoming data listener
-      // @ts-ignore
-      window.electronAPI.onTerminalData((data: string) => {
-        term.write(data);
-      });
-
-      // Implement local echo because child_process doesn't echo like a true PTY
+      // child_process isn't a real PTY, so we do line editing locally.
       let command = '';
-      term.onKey(({ key, domEvent }) => {
-        const ev = domEvent as KeyboardEvent;
-        const printable = !ev.altKey && !ev.ctrlKey && !ev.metaKey;
+      const history: string[] = [];
+      let histIdx = 0;
+      const replaceLine = (next: string) => {
+        term.write('\b \b'.repeat(command.length) + next);
+        command = next;
+      };
 
-        if (ev.keyCode === 13) {
-          // Enter
-          term.write('\r\n');
-
-          const cmdTrimmed = command.trim();
-          if (cmdTrimmed === 'clear' || cmdTrimmed === 'cls') {
+      term.onData((data) => {
+        switch (data) {
+          case '\r': {
+            term.write('\r\n');
+            const trimmed = command.trim();
+            if (trimmed) { history.push(command); }
+            histIdx = history.length;
+            if (trimmed === 'clear' || trimmed === 'cls') term.clear();
+            api.writeTerminal(command + '\r\n');
+            command = '';
+            return;
+          }
+          case '\x7f': case '\b':
+            if (command.length) { command = command.slice(0, -1); term.write('\b \b'); }
+            return;
+          case '\x03':
+            term.write('^C\r\n');
+            command = '';
+            api.writeTerminal('\x03');
+            return;
+          case '\x0c':
             term.clear();
-          }
-
-          // @ts-ignore
-          window.electronAPI.writeTerminal(command + '\r\n');
-          command = '';
-        } else if (ev.keyCode === 8) {
-          // Backspace
-          if (command.length > 0) {
-            command = command.slice(0, -1);
-            term.write('\b \b');
-          }
-        } else if (ev.ctrlKey && ev.key === 'c') {
-          // Send SIGINT approx
-          // @ts-ignore
-          window.electronAPI.writeTerminal('\x03');
-        } else if (printable && key.length === 1) {
-          command += key;
-          term.write(key);
+            return;
+          case '\x1b[A':
+            if (histIdx > 0) replaceLine(history[--histIdx]);
+            return;
+          case '\x1b[B':
+            if (histIdx < history.length - 1) replaceLine(history[++histIdx]);
+            else { histIdx = history.length; replaceLine(''); }
+            return;
         }
+        if (data.startsWith('\x1b')) return; // ignore other escape sequences
+        // Printable input, including multi-character paste (first line only).
+        const text = data.replace(/[\r\n].*$/s, '').replace(/[\x00-\x1f]/g, '');
+        command += text;
+        term.write(text);
       });
+      term.write(`\x1b[2m# ${projectPath}\x1b[0m\r\n`);
     } else {
-      term.writeln('\x1b[31mError: Electron API for terminal not found.\x1b[0m');
-      term.writeln('Running in web mode without a backend shell.');
+      term.writeln('\x1b[31mElectron terminal API not found — running in web mode without a shell.\x1b[0m');
     }
 
     return () => {
+      unsubscribe?.();
       resizeObserver.disconnect();
       term.dispose();
     };
   }, [projectPath]);
 
+  const shellName = navigator.userAgent.includes('Windows') ? 'powershell' : 'bash';
+  const folder = projectPath.split(/[\\/]/).filter(Boolean).pop() ?? projectPath;
+
   return (
-    <div className="w-full h-full bg-background border-t border-border flex flex-col">
-      <div className="px-4 py-1.5 flex items-center bg-surface border-b border-border shrink-0">
-        <span className="text-[11px] font-semibold tracking-wide text-gray-400 uppercase">Terminal</span>
+    <div className="w-full h-full bg-black border-t border-border flex flex-col min-w-0">
+      <div className="h-8 flex items-center justify-between bg-[#0c0c0c] border-b border-[#1f1f1f] shrink-0 pr-2">
+        <div className="flex items-center h-full min-w-0">
+          <div className="flex items-center gap-2 h-full px-3 bg-black border-r border-[#1f1f1f] border-t-2 border-t-[#39ff14] min-w-0">
+            <TerminalSquare size={13} className="text-[#39ff14] shrink-0" />
+            <span className="text-[12px] text-gray-200 truncate">{shellName}</span>
+            <span className="hidden sm:inline text-[11px] text-gray-500 truncate">· {folder}</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 shrink-0">
+          {size.cols > 0 && (
+            <span className="hidden md:inline text-[10px] text-gray-600 font-mono">{size.cols}×{size.rows}</span>
+          )}
+          <button onClick={() => xtermRef.current?.clear()} title="Clear (Ctrl+L)"
+            className="text-gray-500 hover:text-[#ff4d4d]">
+            <Trash2 size={13} />
+          </button>
+        </div>
       </div>
-      <div className="flex-1 p-2 overflow-hidden" ref={terminalRef} />
+      <div className="flex-1 min-h-0 overflow-hidden pl-3 pt-2 pb-1" ref={terminalRef} />
     </div>
   );
 }

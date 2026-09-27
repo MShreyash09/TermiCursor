@@ -29,9 +29,17 @@ export default function StatusBar({ backendStatus, pullProgress, isPullingModels
     if (backendStatus.status === 'error') {
       if (backendStatus.reason === 'connection_error') {
         return (
-          <div onClick={onRetryConnection} className="flex items-center gap-1.5 text-red-400 hover:text-red-300 cursor-pointer transition-colors px-2 bg-red-900/30 rounded-sm" title="Click to retry connection">
-            <XCircle size={13} />
-            <span>Ollama Offline</span>
+          <div className="flex items-center gap-3">
+            <div onClick={onRetryConnection} className="flex items-center gap-1.5 text-red-400 hover:text-red-300 cursor-pointer transition-colors px-2 bg-red-900/30 rounded-sm" title="Click to retry connection">
+              <XCircle size={13} />
+              <span>Ollama Offline</span>
+            </div>
+            {/* Opens in the system browser (main.cjs setWindowOpenHandler). */}
+            <a href="https://ollama.com/download" target="_blank" rel="noreferrer"
+              className="text-white/90 hover:text-white underline underline-offset-2"
+              title="TermiCursor runs models locally with Ollama. Install it, start it, and this turns green.">
+              Get Ollama
+            </a>
           </div>
         );
       }

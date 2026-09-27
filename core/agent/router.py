@@ -103,3 +103,4 @@ async def classify_intent(goal: str, llm: LLMClient) -> str:
         # On any router failure, prefer the fast path rather than over-planning.
         return "simple"
     return "complex" if "complex" in raw else "simple"
+

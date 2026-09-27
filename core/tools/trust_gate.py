@@ -36,6 +36,13 @@ _ALWAYS_SAFE = {
 }
 
 
+def auto_approve_shell() -> bool:
+    """Settings → "Auto-approve shell commands" (off by default). Read on every
+    call so toggling it applies to the next command."""
+    from core.config import load_settings
+    return bool(load_settings().get("autoApproveShell"))
+
+
 def _path_escapes_project(project_root: str, rel_path: str) -> bool:
     norm_root = os.path.normpath(os.path.abspath(project_root))
     abs_path = os.path.normpath(os.path.join(norm_root, rel_path or "."))
@@ -56,8 +63,12 @@ def classify_risk(tool_name: str, args: dict, project_root: str) -> Risk:
         return "needs_approval" if tool_name == "delete_file" else "safe"
 
     if tool_name == "run_shell_command":
+        # The blocklist can't catch everything (e.g. `python -c "shutil.rmtree(...)"`),
+        # and the agent reads untrusted text (repo files, web pages) that may try to
+        # steer it, so every command asks unless the user opted in to auto-approve.
+        # Commands matching the blocklist always ask.
         command = (args or {}).get("command", "")
-        if _DESTRUCTIVE_RE.search(command):
+        if _DESTRUCTIVE_RE.search(command) or not auto_approve_shell():
             return "needs_approval"
         return "safe"
 

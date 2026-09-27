@@ -12,13 +12,18 @@ autoUpdater.logger = log;
 autoUpdater.logger.transports.file.level = 'info';
 
 
+// E2E runs (frontend/e2e/run-e2e.mjs) use a throwaway profile and skip DevTools.
+const E2E_USER_DATA = process.env.TERMICURSOR_E2E_USER_DATA;
+if (E2E_USER_DATA) app.setPath('userData', E2E_USER_DATA);
+
 // Only one instance: two would fight over the local Qdrant store (it locks its folder).
 if (!app.requestSingleInstanceLock()) {
   app.exit(0);
 }
 
 let pythonProcess = null;
-let backendPort = 8000;
+// Dev: the backend you run by hand (uvicorn, default 8000). Packaged: picked at startup.
+let backendPort = Number(process.env.TERMICURSOR_BACKEND_PORT) || 8000;
 // Per-launch secret the backend requires on every request (see server.py). Dev mode
 // runs the backend by hand without a token, so the renderer sends none there.
 const backendToken = app.isPackaged ? crypto.randomBytes(32).toString('hex') : '';
@@ -137,14 +142,22 @@ function createWindow() {
   let ptyProcess = null;
   ipcMain.handle('terminal:spawn', (event, projectPath) => {
     if (ptyProcess) ptyProcess.kill();
-    const shellExe = process.platform === 'win32' ? 'powershell.exe' : 'bash';
-    const args = process.platform === 'win32' ? ['-NoLogo'] : [];
+    // Settings → Terminal → Shell.
+    let choice = 'PowerShell';
+    try { choice = JSON.parse(require('fs').readFileSync(path.join(app.getPath('userData'), 'settings.json'), 'utf-8')).terminalShell || choice; } catch { /* defaults */ }
+    const SHELLS = { 'PowerShell': ['powershell.exe', ['-NoLogo']], 'Command Prompt': ['cmd.exe', []], 'Git Bash': ['bash.exe', ['--login', '-i']], 'WSL': ['wsl.exe', []] };
+    const [shellExe, args] = process.platform === 'win32' ? (SHELLS[choice] || SHELLS['PowerShell']) : ['bash', []];
     ptyProcess = spawn(shellExe, args, {
       env: process.env,
       cwd: projectPath || app.getPath('userData'),
       windowsHide: true,
     });
-    
+    // A missing shell (e.g. Git Bash not installed) must not crash the main process.
+    ptyProcess.on('error', (err) => {
+      win.webContents.send('terminal:incomingData',
+        `\x1b[31mCould not start ${shellExe}: ${err.message}. Pick another shell in Settings.\x1b[0m\r\n`);
+    });
+
     ptyProcess.stdout.on('data', (data) => {
       win.webContents.send('terminal:incomingData', data.toString().replace(/\x00/g, ''));
     });
@@ -210,6 +223,8 @@ function createWindow() {
     try {
       const settingsPath = path.join(app.getPath('userData'), 'settings.json');
       await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+      // Open panels (editor, terminal) apply font/editor settings live.
+      win.webContents.send('settings-changed', settings);
       return true;
     } catch (e) {
       console.error("Failed to save settings:", e);
@@ -276,17 +291,18 @@ function createWindow() {
   const isDev = !app.isPackaged;
 
   if (isDev) {
-    win.loadURL('http://localhost:5180');
-    win.webContents.openDevTools({ mode: 'detach' });
+    win.loadURL(process.env.TERMICURSOR_DEV_URL || 'http://localhost:5180');
+    if (!E2E_USER_DATA) win.webContents.openDevTools({ mode: 'detach' });
   } else {
     win.loadFile(path.join(__dirname, '../dist/index.html'));
   }
 
   // Trigger update check when window is ready to show
   win.once('ready-to-show', () => {
-    autoUpdater.checkForUpdatesAndNotify().catch(err => {
-      log.error('Auto-update check failed: ', err);
-    });
+    if (!app.isPackaged) return;
+    const check = () => autoUpdater.checkForUpdates().catch(err => log.error('Auto-update check failed: ', err));
+    check();
+    setInterval(check, 4 * 60 * 60 * 1000);  // long-running sessions still get updates
   });
 }
 

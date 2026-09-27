@@ -6,34 +6,32 @@ interface Props {
   onRespond: (approved: boolean) => void;
 }
 
+const TITLES: Record<string, string> = {
+  run_shell_command: 'Run this command?',
+  delete_file: 'Delete this file?',
+  write_file: 'Write outside the project?',
+  edit_file: 'Edit outside the project?',
+};
+
 export default function ApprovalPrompt({ approval, onRespond }: Props) {
-  const detail =
-    approval.tool === 'run_shell_command'
-      ? approval.args.command
-      : JSON.stringify(approval.args);
+  const detail = approval.tool === 'run_shell_command'
+    ? approval.args.command
+    : approval.args.path ?? JSON.stringify(approval.args);
   return (
-    <div className="mx-4 my-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
-      <div className="flex items-center gap-2 text-amber-300 text-sm font-semibold">
-        <ShieldAlert size={16} />
-        Approval required
+    <div className="mt-3 rounded-lg border border-warn/40 bg-warn/[0.06] p-3" data-testid="approval">
+      <div className="flex items-center gap-2 text-warn text-[12.5px] font-semibold">
+        <ShieldAlert size={14} /> {TITLES[approval.tool] ?? `Allow ${approval.tool}?`}
       </div>
-      <p className="mt-1 text-xs text-amber-100/80">
-        The agent wants to run a potentially destructive action:
-      </p>
-      <pre className="mt-2 rounded bg-black/40 px-2 py-1.5 text-xs text-amber-100 overflow-x-auto">
-        <span className="text-amber-400">{approval.tool}</span> {detail}
+      <pre className="mt-2 rounded-md bg-background border border-border px-2.5 py-2 font-mono text-[11.5px] text-fg whitespace-pre-wrap break-all">
+        {approval.tool === 'run_shell_command' && <span className="text-primary select-none">$ </span>}{detail}
       </pre>
-      <div className="mt-3 flex gap-2">
-        <button
-          onClick={() => onRespond(true)}
-          className="flex-1 rounded-md bg-amber-500 px-3 py-1.5 text-xs font-semibold text-black hover:bg-amber-400"
-        >
-          Approve
+      <div className="mt-2.5 flex gap-2">
+        <button onClick={() => onRespond(true)} data-testid="approval-approve"
+          className="flex-1 rounded-md bg-warn px-3 py-1.5 text-[12px] font-semibold text-black hover:brightness-110">
+          Allow
         </button>
-        <button
-          onClick={() => onRespond(false)}
-          className="flex-1 rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-gray-300 hover:bg-white/5"
-        >
+        <button onClick={() => onRespond(false)} data-testid="approval-deny"
+          className="flex-1 rounded-md border border-border-strong px-3 py-1.5 text-[12px] text-muted hover:text-fg hover:bg-surface-hover">
           Deny
         </button>
       </div>

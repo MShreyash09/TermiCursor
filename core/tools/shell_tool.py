@@ -25,6 +25,9 @@ class RunShellCommandTool(Tool):
     args_model = RunShellArgs
 
     async def run(self, args: RunShellArgs, *, project_root: str) -> ToolResult:
+        root_name = os.path.basename(os.path.normpath(project_root))
+        if args.cwd.strip("/\\") == root_name and not os.path.isdir(os.path.join(project_root, args.cwd)):
+            args.cwd = "."  # "my-project" means the project root, not a subfolder of it
         try:
             cwd = _resolve_in_project(project_root, args.cwd)
         except ValueError as e:

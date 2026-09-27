@@ -1,80 +1,66 @@
 import { useEffect, useState } from 'react';
 import { Command } from 'cmdk';
-import { Settings, RefreshCw, Terminal, Search, Folder } from 'lucide-react';
+import { Settings, RefreshCw, Terminal, Search, PanelLeft, FolderOpen, Bot, Keyboard } from 'lucide-react';
+import { Kbd } from './ui';
 
 interface CommandPaletteProps {
   onToggleTerminal: () => void;
   onToggleSidebar: () => void;
   onOpenSettings: () => void;
+  onOpenFolder?: () => void;
+  onToggleAgent?: () => void;
+  onShowShortcuts?: () => void;
 }
 
-export default function CommandPalette({ onToggleTerminal, onToggleSidebar, onOpenSettings }: CommandPaletteProps) {
+export default function CommandPalette(props: CommandPaletteProps) {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if ((e.key === 'k' || e.key === 'p') && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
-        setOpen((open) => !open);
+        setOpen((o) => !o);
       }
+      if (e.key === 'Escape') setOpen(false);
     };
-
     document.addEventListener('keydown', down);
     return () => document.removeEventListener('keydown', down);
   }, []);
 
   if (!open) return null;
 
+  const items: [string, typeof Settings, string | null, (() => void) | undefined][] = [
+    ['Open folder…', FolderOpen, null, props.onOpenFolder],
+    ['Toggle agent panel', Bot, 'Ctrl+L', props.onToggleAgent],
+    ['Toggle explorer', PanelLeft, 'Ctrl+B', props.onToggleSidebar],
+    ['Toggle terminal', Terminal, 'Ctrl+`', props.onToggleTerminal],
+    ['Open settings', Settings, 'Ctrl+,', props.onOpenSettings],
+    ['Keyboard shortcuts', Keyboard, 'Ctrl+/', props.onShowShortcuts],
+    ['Reload window', RefreshCw, null, () => window.location.reload()],
+  ];
+
   return (
-    <div className="fixed inset-0 z-[9999] bg-black/50 backdrop-blur-sm flex items-start justify-center pt-[15vh]">
-      <div className="bg-surface border border-border rounded-xl shadow-2xl w-[500px] overflow-hidden flex flex-col">
-        <Command label="Command Palette" className="flex flex-col w-full h-full">
-          <div className="flex items-center px-3 border-b border-border">
-            <Search size={16} className="text-gray-500 mr-2" />
-            <Command.Input 
-              autoFocus
-              placeholder="Type a command or search..." 
-              className="w-full bg-transparent border-none focus:outline-none text-gray-200 py-3 text-sm" 
-              id="command-palette-input"
-            />
+    <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-start justify-center pt-[14vh]" onClick={() => setOpen(false)} data-testid="command-palette">
+      <div className="bg-surface border border-border-strong rounded-xl shadow-2xl w-[520px] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <Command label="Command palette" className="flex flex-col">
+          <div className="flex items-center px-3.5 border-b border-border">
+            <Search size={15} className="text-dim mr-2.5" />
+            <Command.Input autoFocus placeholder="Type a command…" id="command-palette-input"
+              className="w-full bg-transparent border-none focus:outline-none text-fg placeholder:text-dim py-3 text-[13.5px]" />
           </div>
-          <Command.List className="max-h-[300px] overflow-y-auto p-2 scrollbar-thin scrollbar-thumb-[#333]">
-            <Command.Empty className="py-6 text-center text-sm text-gray-500">No results found.</Command.Empty>
-            
-            <Command.Group heading="General" className="text-xs text-gray-500 font-semibold mb-2 px-2 pt-2">
-              <Command.Item 
-                onSelect={() => { window.location.reload(); setOpen(false); }}
-                className="flex items-center gap-2 px-2 py-2 rounded-md cursor-pointer hover:bg-surface-hover text-gray-300 aria-selected:bg-surface-hover aria-selected:text-white mt-1"
-              >
-                <RefreshCw size={14} />
-                Reload Window
+          <Command.List className="max-h-[320px] overflow-y-auto p-1.5">
+            <Command.Empty className="py-6 text-center text-[12.5px] text-dim">No matching commands.</Command.Empty>
+            {items.filter(([, , , fn]) => fn).map(([label, Icon, keys, fn]) => (
+              <Command.Item key={label} onSelect={() => { fn?.(); setOpen(false); }}
+                className="flex items-center gap-2.5 px-2.5 py-2 rounded-md cursor-pointer text-[13px] text-muted aria-selected:bg-surface-hover aria-selected:text-fg">
+                <Icon size={14} className="text-dim" />
+                <span className="flex-1">{label}</span>
+                {keys && <Kbd>{keys}</Kbd>}
               </Command.Item>
-              <Command.Item 
-                onSelect={() => { onOpenSettings(); setOpen(false); }}
-                className="flex items-center gap-2 px-2 py-2 rounded-md cursor-pointer hover:bg-surface-hover text-gray-300 aria-selected:bg-surface-hover aria-selected:text-white"
-              >
-                <Settings size={14} />
-                Open Settings
-              </Command.Item>
-              <Command.Item 
-                onSelect={() => { onToggleTerminal(); setOpen(false); }}
-                className="flex items-center gap-2 px-2 py-2 rounded-md cursor-pointer hover:bg-surface-hover text-gray-300 aria-selected:bg-surface-hover aria-selected:text-white"
-              >
-                <Terminal size={14} />
-                Toggle Terminal
-              </Command.Item>
-              <Command.Item 
-                onSelect={() => { onToggleSidebar(); setOpen(false); }}
-                className="flex items-center gap-2 px-2 py-2 rounded-md cursor-pointer hover:bg-surface-hover text-gray-300 aria-selected:bg-surface-hover aria-selected:text-white"
-              >
-                <Folder size={14} />
-                Toggle File Tree Sidebar
-              </Command.Item>
-            </Command.Group>
+            ))}
           </Command.List>
         </Command>
       </div>
     </div>
   );
 }
-

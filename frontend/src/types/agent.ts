@@ -40,9 +40,12 @@ export type AgentEvent =
 // A flattened, human-readable log line derived from events (for the activity feed).
 export interface LogLine {
   id: string;
-  kind: 'thought' | 'tool_call' | 'tool_result' | 'error' | 'info';
+  kind: 'goal' | 'answer' | 'thought' | 'tool_call' | 'tool_result' | 'error' | 'info';
   text: string;
   ok?: boolean;
+  tool?: string;                 // tool_call / tool_result
+  args?: Record<string, any>;    // tool_call
+  agent?: AgentKind;             // goal: which mode the request was sent in
 }
 
 export interface PendingApproval {

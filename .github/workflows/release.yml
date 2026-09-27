@@ -1,0 +1,43 @@
+name: Release
+
+# Push a tag like v0.2.0 -> tests, build, draft GitHub Release.
+# Users get the update only after you click "Publish" on the draft.
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Backend tests
+        run: |
+          pip install -r requirements.txt pytest httpx pyinstaller
+          python -m pytest -q tests --ignore-glob="tests/live_*"
+      - name: Build backend exe
+        run: pyinstaller --noconfirm termicursor-backend.spec
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build and upload installer
+        working-directory: frontend
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          npm ci
+          npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
+          npm run build
+          npx electron-builder --win --publish always

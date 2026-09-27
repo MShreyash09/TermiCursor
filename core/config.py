@@ -40,11 +40,13 @@ def reload_settings() -> None:
     `config.X` at use time, not via `from core.config import X`, or you get a
     stale copy. Empty strings (e.g. a half-typed field) fall back to defaults."""
     global LLM_PROVIDER, GROQ_API_KEY, GROQ_MODEL, LLM_MODEL, OLLAMA_URL
-    global ROUTER_MODEL, PLANNER_MODEL, EXECUTOR_MODEL
+    global ROUTER_MODEL, PLANNER_MODEL, EXECUTOR_MODEL, CUSTOM_PROVIDERS
     s = load_settings()
     LLM_PROVIDER = (s.get("llmProvider") or os.getenv("LLM_PROVIDER") or "ollama").lower()
     GROQ_API_KEY = s.get("groqApiKey") or os.getenv("GROQ_API_KEY") or ""
     GROQ_MODEL = s.get("groqModel") or os.getenv("GROQ_MODEL") or "llama-3.1-8b-instant"
+    # OpenAI-compatible APIs added in Settings: [{name, apiKey, baseUrl, model}]
+    CUSTOM_PROVIDERS = [p for p in (s.get("customProviders") or []) if isinstance(p, dict) and p.get("name")]
     LLM_MODEL = s.get("ollamaModel") or os.getenv("OLLAMA_LLM_MODEL") or "qwen2.5-coder:3b"
     OLLAMA_URL = s.get("ollamaUrl") or os.getenv("OLLAMA_URL") or "http://localhost:11434"
     # Role-based models
@@ -56,10 +58,21 @@ def reload_settings() -> None:
 
 reload_settings()
 
+
+def active_model() -> str:
+    """The model the agent actually talks to, for display (status bar, CLI toolbar)."""
+    if LLM_PROVIDER == "groq":
+        return GROQ_MODEL
+    custom = next((p for p in CUSTOM_PROVIDERS if p["name"].lower() == LLM_PROVIDER), None)
+    return custom.get("model", "") if custom else EXECUTOR_MODEL
+
 # ── Agent loop bounds ──
 MAX_ITERATIONS_PER_STEP = int(os.getenv("MAX_ITERATIONS_PER_STEP", "12"))
 # Simple (unplanned) requests are one step; keep their budget tight so a small
 # model that starts looping is stopped quickly instead of grinding for minutes.
-SIMPLE_MAX_ITERATIONS = int(os.getenv("SIMPLE_MAX_ITERATIONS", "6"))
+SIMPLE_MAX_ITERATIONS = int(os.getenv("SIMPLE_MAX_ITERATIONS", "8"))
 MAX_JSON_RETRIES = int(os.getenv("MAX_JSON_RETRIES", "2"))
 SHELL_TIMEOUT_SEC = int(os.getenv("SHELL_TIMEOUT_SEC", "120"))
+# Ollama's default context is 4096 tokens: the system prompt + tool schemas + one file
+# overflow it and Ollama silently drops the oldest context. qwen2.5-coder supports 32k.
+NUM_CTX = int(os.getenv("OLLAMA_NUM_CTX", "8192"))

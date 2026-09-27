@@ -9,6 +9,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   readFile: (filePath) => ipcRenderer.invoke('dialog:readFile', filePath),
   writeFile: (filePath, content) => ipcRenderer.invoke('dialog:writeFile', filePath, content),
   saveSettings: (settings) => ipcRenderer.invoke('dialog:saveSettings', settings),
+  onSettingsChanged: (callback) => {
+    const listener = (_event, value) => callback(value);
+    ipcRenderer.on('settings-changed', listener);
+    return () => ipcRenderer.removeListener('settings-changed', listener);
+  },
   loadSettings: () => ipcRenderer.invoke('dialog:loadSettings'),
   getBackendPort: () => ipcRenderer.invoke('getBackendPort'),
   getBackendToken: () => ipcRenderer.invoke('getBackendToken'),

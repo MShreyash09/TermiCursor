@@ -1,5 +1,5 @@
-import { FolderOpen, Clock, ChevronRight, Terminal, Command, Code2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { FolderOpen, Check, X, Download, ArrowRight, Loader2 } from 'lucide-react';
+import { BlockLogo, Kbd } from './ui';
 
 interface RecentFolder {
   path: string;
@@ -10,101 +10,133 @@ interface WelcomeScreenProps {
   onOpenFolder: () => void;
   recentFolders?: RecentFolder[];
   onOpenRecentFolder?: (path: string) => void;
+  backendStatus?: any;
+  onInstallModels?: () => void;
+  isPullingModels?: boolean;
+  projectPath?: string;
 }
 
-export default function WelcomeScreen({ onOpenFolder, recentFolders = [], onOpenRecentFolder }: WelcomeScreenProps) {
-  const [mounted, setMounted] = useState(false);
+const SHORTCUTS: [string, string][] = [
+  ['Ctrl+L', 'Agent panel'],
+  ['Ctrl+P', 'Command palette'],
+  ['Ctrl+`', 'Terminal'],
+  ['Ctrl+B', 'Explorer'],
+  ['Ctrl+,', 'Settings'],
+  ['Ctrl+/', 'All shortcuts'],
+];
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+function Step({ state, title, children }: { state: 'done' | 'todo' | 'wait' | 'bad'; title: string; children?: React.ReactNode }) {
+  const icon = {
+    done: <Check size={12} className="text-black" />,
+    todo: <span className="w-1.5 h-1.5 rounded-full bg-dim" />,
+    wait: <Loader2 size={12} className="text-dim animate-spin" />,
+    bad: <X size={12} className="text-black" />,
+  }[state];
+  const ring = { done: 'bg-primary', todo: 'border border-border-strong', wait: 'border border-border-strong', bad: 'bg-danger' }[state];
+  return (
+    <li className="flex items-start gap-3 py-2.5">
+      <span className={`mt-px w-[18px] h-[18px] rounded-full flex items-center justify-center shrink-0 ${ring}`}>{icon}</span>
+      <div className="min-w-0 flex-1">
+        <div className={`text-[13px] ${state === 'done' ? 'text-muted' : 'text-fg'}`}>{title}</div>
+        {children && <div className="mt-1 text-[12px] text-dim">{children}</div>}
+      </div>
+    </li>
+  );
+}
+
+export default function WelcomeScreen({
+  onOpenFolder, recentFolders = [], onOpenRecentFolder, backendStatus, onInstallModels, isPullingModels, projectPath,
+}: WelcomeScreenProps) {
+  // A folder is open but no file: a quiet project home, like an editor watermark.
+  if (projectPath) {
+    const name = projectPath.split(/[\\/]/).filter(Boolean).pop();
+    return (
+      <div className="flex-1 h-full bg-background flex flex-col items-center justify-center gap-8 overflow-hidden" data-testid="project-home">
+        <BlockLogo className="text-[15px] opacity-25" />
+        <div className="text-center">
+          <div className="text-[15px] text-fg font-medium">{name}</div>
+          <div className="text-[12.5px] text-dim mt-1">Open a file from the explorer, or ask the agent about this project.</div>
+        </div>
+        <div className="grid grid-cols-2 gap-x-10 gap-y-2.5">
+          {SHORTCUTS.map(([keys, label]) => (
+            <div key={keys} className="flex items-center justify-between gap-6 text-[12.5px] text-dim">
+              <span>{label}</span><Kbd>{keys}</Kbd>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  const ollamaUp = backendStatus?.ollama_ready;
+  const modelsOk = backendStatus?.status === 'ok';
+  const checking = !backendStatus;
 
   return (
-    <div className="relative flex-1 h-full flex flex-col items-center justify-center overflow-y-auto bg-[#050505]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#424242 transparent' }}>
+    <div className="flex-1 h-full bg-background overflow-y-auto" data-testid="welcome">
+      <div className="min-h-full w-full max-w-[880px] mx-auto px-10 py-12 flex flex-col justify-center">
+        <BlockLogo className="text-[20px] sm:text-[24px]" />
+        <p className="mt-4 text-[14px] text-muted">
+          A local coding agent. <span className="text-ask">Ask</span> about your code, <span className="text-plan">Plan</span> a change, or let it <span className="text-build">Build</span>.
+        </p>
 
-      {/* Background glow effects */}
-      <div className="absolute top-[-20%] left-1/2 -translate-x-1/2 w-[800px] h-[600px] bg-cyan-900/10 blur-[120px] rounded-full pointer-events-none" />
-      <div className="absolute bottom-[-20%] left-[-10%] w-[600px] h-[500px] bg-indigo-900/10 blur-[100px] rounded-full pointer-events-none" />
+        <div className="mt-10 grid grid-cols-1 md:grid-cols-[1.1fr_1fr] gap-10">
+          <div>
+            <button onClick={onOpenFolder} data-testid="open-folder"
+              className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-lg bg-primary text-black font-semibold text-[13.5px] hover:brightness-110 transition">
+              <span className="flex items-center gap-2.5"><FolderOpen size={17} /> Open Folder</span>
+              <ArrowRight size={16} />
+            </button>
 
-      <div className={`relative z-10 w-full max-w-4xl px-8 py-12 flex flex-col items-center transition-all duration-1000 transform ${mounted ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
-
-        {/* Logo & Title */}
-        <div className="flex flex-col items-center mt-5">
-          <div className="relative group mb-6">
-            <div className="absolute inset-0 bg-cyan-400/20 blur-2xl rounded-full group-hover:bg-cyan-400/40 transition-all duration-700"></div>
-            <div className="relative bg-gradient-to-br from-[#1a1a2e] to-[#0f3443] p-5 rounded-2xl border border-white/10 shadow-2xl">
-              <Terminal size={48} className="text-cyan-400" />
-            </div>
+            <h2 className="mt-8 mb-2 font-mono text-[11px] tracking-[0.12em] text-dim">RECENT</h2>
+            {recentFolders.length === 0 ? (
+              <p className="text-[12.5px] text-dim">Folders you open will show up here.</p>
+            ) : (
+              <ul className="-mx-2">
+                {recentFolders.map((folder) => (
+                  <li key={folder.path}>
+                    <button onClick={() => onOpenRecentFolder?.(folder.path)}
+                      className="group w-full text-left flex items-baseline gap-3 px-2 py-1.5 rounded-md hover:bg-surface-hover">
+                      <span className="text-[13px] text-fg group-hover:text-primary truncate">{folder.name}</span>
+                      <span className="text-[11.5px] text-dim truncate font-mono">{folder.path}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
-          <h1 className="text-5xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-gray-100 via-gray-300 to-gray-500 mb-4 text-center">
-            Termicursor IDE
-          </h1>
-          <p className="text-gray-400 text-lg max-w-lg text-center font-light">
-            The next generation agentic IDE.<br />Code at the speed of thought.
-          </p>
-        </div>
 
-        {/* Primary Actions */}
-        <div className="w-full max-w-md flex flex-col gap-4 mb-16">
-          <button
-            onClick={onOpenFolder}
-            className="group relative w-full flex items-center justify-center gap-3 py-4 px-6 bg-gradient-to-r from-[#0b2b2d] to-[#124244] hover:from-[#103d40] hover:to-[#1a5b5e] text-gray-100 font-medium rounded-xl border border-cyan-800/40 hover:border-cyan-500 shadow-[0_0_15px_rgba(6,182,212,0.1)] hover:shadow-[0_0_25px_rgba(6,182,212,0.25)] transition-all duration-300 overflow-hidden cursor-pointer"
-          >
-            <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-[100%] group-hover:animate-[shimmer_1.5s_infinite]" />
-            <FolderOpen size={20} className="text-cyan-400 group-hover:scale-110 transition-transform" />
-            <span className="text-base tracking-wide font-semibold text-cyan-50">Open Project Folder</span>
-          </button>
+          <div>
+            <h2 className="mb-1 font-mono text-[11px] tracking-[0.12em] text-dim">GET STARTED</h2>
+            <ul className="divide-y divide-border">
+              <Step state={checking ? 'wait' : ollamaUp ? 'done' : 'bad'} title="Ollama is running">
+                {!checking && !ollamaUp && (
+                  <>Models run locally through Ollama. <a href="https://ollama.com/download" target="_blank" rel="noreferrer" className="text-build hover:underline">Install Ollama</a>, start it, and this turns green.</>
+                )}
+              </Step>
+              <Step state={checking || !ollamaUp ? 'todo' : modelsOk ? 'done' : isPullingModels ? 'wait' : 'bad'} title="Models downloaded">
+                {ollamaUp && !modelsOk && (
+                  isPullingModels ? <>Downloading {backendStatus?.missing_models?.join(', ')}… progress is in the status bar.</> : (
+                    <button onClick={onInstallModels} className="mt-0.5 inline-flex items-center gap-1.5 text-warn hover:underline">
+                      <Download size={12} /> Download {backendStatus?.missing_models?.join(', ')} (about 2.2 GB)
+                    </button>
+                  )
+                )}
+              </Step>
+              <Step state="todo" title="Open a project folder">Then ask the agent about it, plan a change, or give it a task.</Step>
+            </ul>
 
-          <div className="flex gap-4">
-            <div className="flex-1 flex items-center justify-center gap-2 py-3 bg-white/[0.02] border border-white/5 rounded-xl text-gray-400 text-sm">
-              <Command size={14} className="opacity-70" />
-              <span>Ctrl + / for Shortcuts</span>
-            </div>
-            <div className="flex-1 flex items-center justify-center gap-2 py-3 bg-white/[0.02] border border-white/5 rounded-xl text-gray-400 text-sm">
-              <Code2 size={14} className="opacity-70" />
-              <span>Ctrl + L for AI Chat</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Recent Folders */}
-        {recentFolders.length > 0 && (
-          <div className={`w-full max-w-3xl transition-all duration-1000 delay-300 transform ${mounted ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
-            <div className="flex items-center gap-3 mb-8">
-              <div className="h-[1px] flex-1 bg-gradient-to-r from-transparent to-white/10" />
-              <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                <Clock size={14} />
-                Recent Workspaces
-              </h3>
-              <div className="h-[1px] flex-1 bg-gradient-to-l from-transparent to-white/10" />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {recentFolders.map((folder, i) => (
-                <div
-                  key={i}
-                  onClick={() => onOpenRecentFolder?.(folder.path)}
-                  className="group p-4 bg-white/[0.02] border border-white/5 hover:bg-white/[0.05] hover:border-cyan-500/30 rounded-xl cursor-pointer transition-all duration-300 flex items-center justify-between hover:shadow-[0_0_15px_rgba(6,182,212,0.1)] hover:-translate-y-0.5"
-                >
-                  <div className="min-w-0 flex-1 pr-4">
-                    <div className="text-gray-200 font-medium group-hover:text-cyan-400 transition-colors truncate text-sm mb-1">{folder.name}</div>
-                    <div className="text-xs text-gray-500 truncate opacity-70">{folder.path}</div>
-                  </div>
-                  <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-cyan-500/20 transition-colors shrink-0">
-                    <ChevronRight size={16} className="text-gray-500 group-hover:text-cyan-400 transition-colors" />
-                  </div>
+            <h2 className="mt-8 mb-2 font-mono text-[11px] tracking-[0.12em] text-dim">SHORTCUTS</h2>
+            <div className="grid grid-cols-1 gap-1.5">
+              {SHORTCUTS.slice(0, 4).map(([keys, label]) => (
+                <div key={keys} className="flex items-center justify-between text-[12.5px] text-dim">
+                  <span>{label}</span><Kbd>{keys}</Kbd>
                 </div>
               ))}
             </div>
           </div>
-        )}
+        </div>
       </div>
-
-      <style>{`
-        @keyframes shimmer {
-          100% { transform: translateX(100%); }
-        }
-      `}</style>
     </div>
   );
 }

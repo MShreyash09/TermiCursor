@@ -1,5 +1,6 @@
-"""Thin async chat client: local Ollama (/api/chat) by default, or Groq's
-OpenAI-compatible API when `llmProvider` is "groq" in Settings.
+"""Thin async chat client: local Ollama (/api/chat) by default, or an
+OpenAI-compatible API (Groq, or a custom provider added in Settings) when
+`llmProvider` names one.
 
 Uses the JSON-prompt tool-calling strategy: the model is instructed via system
 prompt to emit one JSON object per turn, which json_protocol parses. Native
@@ -19,13 +20,23 @@ class LLMClient:
         self.base_url = (base_url or config.OLLAMA_URL).rstrip("/")
 
     async def chat(self, messages: list[dict], *, temperature: float = 0.1) -> str:
-        if config.LLM_PROVIDER == "groq":
-            return await self._chat_groq(messages, temperature)
+        provider = config.LLM_PROVIDER
+        if provider == "groq":
+            if not config.GROQ_API_KEY:
+                raise RuntimeError("Groq is selected as the LLM provider but no Groq API key is set in Settings.")
+            return await self._chat_openai_compatible(
+                GROQ_CHAT_URL, config.GROQ_API_KEY, config.GROQ_MODEL, messages, temperature, "Groq")
+        custom = next((p for p in config.CUSTOM_PROVIDERS if p["name"].lower() == provider), None)
+        if custom is not None:
+            base = (custom.get("baseUrl") or "https://api.openai.com/v1").rstrip("/")
+            return await self._chat_openai_compatible(
+                f"{base}/chat/completions", custom.get("apiKey", ""), custom.get("model", ""),
+                messages, temperature, custom["name"])
         payload = {
             "model": self.model,
             "messages": messages,
             "stream": False,
-            "options": {"temperature": temperature},
+            "options": {"temperature": temperature, "num_ctx": config.NUM_CTX},
         }
         url = f"{self.base_url}/api/chat"
         async with aiohttp.ClientSession() as session:
@@ -34,17 +45,16 @@ class LLMClient:
                 data = await resp.json()
         return data.get("message", {}).get("content", "")
 
-    async def _chat_groq(self, messages: list[dict], temperature: float) -> str:
-        # Per-role Ollama model names don't exist on Groq; every role uses the Groq model.
-        if not config.GROQ_API_KEY:
-            raise RuntimeError("Groq is selected as the LLM provider but no Groq API key is set in Settings.")
-        payload = {"model": config.GROQ_MODEL, "messages": messages, "temperature": temperature}
-        headers = {"Authorization": f"Bearer {config.GROQ_API_KEY}"}
+    async def _chat_openai_compatible(self, url: str, api_key: str, model: str, messages: list[dict],
+                                      temperature: float, label: str) -> str:
+        # Per-role Ollama model names don't exist on cloud APIs; every role uses the provider's model.
+        payload = {"model": model, "messages": messages, "temperature": temperature}
+        headers = {"Authorization": f"Bearer {api_key}"}
         async with aiohttp.ClientSession() as session:
-            async with session.post(GROQ_CHAT_URL, json=payload, headers=headers,
+            async with session.post(url, json=payload, headers=headers,
                                     timeout=aiohttp.ClientTimeout(total=120)) as resp:
                 if resp.status >= 400:
-                    raise RuntimeError(f"Groq API error {resp.status}: {(await resp.text())[:300]}")
+                    raise RuntimeError(f"{label} API error {resp.status}: {(await resp.text())[:300]}")
                 data = await resp.json()
         return data["choices"][0]["message"]["content"] or ""
 

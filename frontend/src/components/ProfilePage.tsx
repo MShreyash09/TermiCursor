@@ -1,130 +1,119 @@
-import { Mail, MapPin, Calendar, ExternalLink, Edit3, Globe } from 'lucide-react';
-import { useState } from 'react';
+import { Mail, MapPin, Calendar, Globe, Edit3 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { backendUrl } from '../backend';
 
-export default function ProfilePage() {
-  const DEFAULT_PROFILE = {
-    name: 'Default User',
-    email: 'user@example.com',
-    location: 'Earth',
-    joinDate: new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
-    bio: 'Ready to code with TermiCursor.',
-    github: '',
-  };
+const DEFAULT_PROFILE = {
+  name: 'You',
+  email: '',
+  location: '',
+  joinDate: new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+  bio: 'Coding with TermiCursor.',
+  github: '',
+};
 
+const inputClass = 'flex-1 bg-background border border-border-strong rounded-md px-2.5 py-1 text-[13px] text-fg focus:outline-none focus:border-primary/60';
+
+export default function ProfilePage({ backendPort = 8000 }: { backendPort?: number }) {
   const [isEditing, setIsEditing] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
   const [profile, setProfile] = useState<typeof DEFAULT_PROFILE>(() => {
-    const saved = localStorage.getItem('termicursor_profile');
-    return saved ? JSON.parse(saved) : DEFAULT_PROFILE;
+    try {
+      const saved = localStorage.getItem('termicursor_profile');
+      return saved ? { ...DEFAULT_PROFILE, ...JSON.parse(saved) } : DEFAULT_PROFILE;
+    } catch { return DEFAULT_PROFILE; }
   });
+  // Real activity, from the local session history.
+  const [stats, setStats] = useState<{ sessions: number; projects: number; done: number } | null>(null);
 
-  const handleSave = () => {
-    localStorage.setItem('termicursor_profile', JSON.stringify(profile));
+  useEffect(() => {
+    fetch(backendUrl(backendPort, '/sessions'))
+      .then((r) => r.json())
+      .then(({ sessions }) => {
+        const list: any[] = Array.isArray(sessions) ? sessions : [];
+        setStats({
+          sessions: list.length,
+          projects: new Set(list.map((s) => s.project_path)).size,
+          done: list.filter((s) => s.status === 'done').length,
+        });
+      })
+      .catch(() => setStats(null));
+  }, [backendPort]);
+
+  const save = () => {
+    try { localStorage.setItem('termicursor_profile', JSON.stringify(profile)); } catch { /* ignore */ }
     setIsEditing(false);
   };
 
-  const handleSignOut = () => {
-    if (confirm("Are you sure you want to sign out? This will reset your profile data to the default.")) {
-      localStorage.removeItem('termicursor_profile');
-      setProfile(DEFAULT_PROFILE);
-    }
+  const reset = () => {
+    if (!confirmReset) { setConfirmReset(true); return; }
+    try { localStorage.removeItem('termicursor_profile'); } catch { /* ignore */ }
+    setProfile(DEFAULT_PROFILE);
+    setConfirmReset(false);
   };
 
+  const fields = [
+    { icon: Mail, label: 'Email', key: 'email' as const },
+    { icon: MapPin, label: 'Location', key: 'location' as const },
+    { icon: Globe, label: 'GitHub', key: 'github' as const },
+    { icon: Calendar, label: 'Since', key: 'joinDate' as const },
+  ];
+
   return (
-    <div className="flex-1 h-full bg-[#031c1d] flex flex-col items-center pt-24 overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: '#424242 transparent' }}>
-      {/* Profile Card */}
-      <div className="w-full max-w-lg px-6">
-        {/* Avatar + Name */}
-        <div className="flex items-start gap-5 mb-8">
-          <div className="w-20 h-20 rounded-full bg-gradient-to-br from-cyan-500 to-violet-600 flex items-center justify-center text-3xl font-bold text-white shrink-0 shadow-lg shadow-cyan-500/20">
-            {profile.name.charAt(0)}
+    <div className="flex-1 h-full bg-background overflow-y-auto" data-testid="profile-page">
+      <div className="w-full max-w-xl mx-auto px-8 pt-12 pb-16">
+        <div className="flex items-center gap-4 mb-8">
+          <div className="w-14 h-14 rounded-xl bg-primary/10 border border-primary/30 flex items-center justify-center font-mono text-2xl font-bold text-primary shrink-0">
+            {(profile.name || '?').charAt(0).toUpperCase()}
           </div>
-          <div className="flex-1">
-            <div className="flex items-center gap-3 mb-1">
-              <h1 className="text-2xl font-semibold text-gray-100">{profile.name}</h1>
-              <button
-                onClick={() => setIsEditing(!isEditing)}
-                className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-                title="Edit Profile"
-              >
-                <Edit3 size={14} />
-              </button>
-            </div>
-            <p className="text-sm text-gray-400">{profile.bio}</p>
+          <div className="min-w-0 flex-1">
+            {isEditing
+              ? <input value={profile.name} onChange={(e) => setProfile((p) => ({ ...p, name: e.target.value }))} className={`${inputClass} text-[16px] w-full`} />
+              : <h1 className="text-[18px] font-semibold text-fg truncate">{profile.name}</h1>}
+            {isEditing
+              ? <input value={profile.bio} onChange={(e) => setProfile((p) => ({ ...p, bio: e.target.value }))} className={`${inputClass} mt-1.5 w-full`} />
+              : <p className="text-[12.5px] text-dim mt-0.5">{profile.bio}</p>}
           </div>
+          {!isEditing && (
+            <button onClick={() => setIsEditing(true)} title="Edit profile" className="p-1.5 rounded-md text-dim hover:text-fg hover:bg-surface-hover">
+              <Edit3 size={14} />
+            </button>
+          )}
         </div>
 
-        {/* Info Fields */}
-        <div className="space-y-1 mb-8">
-          {[
-            { icon: Mail, label: 'Email', value: profile.email, key: 'email' },
-            { icon: MapPin, label: 'Location', value: profile.location, key: 'location' },
-            { icon: Calendar, label: 'Member since', value: profile.joinDate, key: 'joinDate' },
-            { icon: Globe, label: 'GitHub', value: profile.github, key: 'github' },
-          ].map(({ icon: Icon, label, value, key }) => (
-            <div key={key} className="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-white/5 transition-colors group">
-              <Icon size={16} className="text-gray-500 shrink-0" />
-              <span className="text-xs text-gray-500 w-24 shrink-0">{label}</span>
-              {isEditing ? (
-                <input
-                  type="text"
-                  value={value}
-                  onChange={(e) => setProfile(prev => ({ ...prev, [key]: e.target.value }))}
-                  className="flex-1 bg-[#0b2b2d] border border-[#1a4042] rounded px-2 py-1 text-sm text-gray-200 focus:outline-none focus:border-[#2b6b69]"
-                />
-              ) : (
-                <span className="text-sm text-gray-200">{value}</span>
-              )}
-              {key === 'github' && !isEditing && (
-                <ExternalLink size={12} className="text-gray-600 group-hover:text-gray-400 transition-colors ml-auto cursor-pointer" />
-              )}
+        <div className="rounded-lg border border-border bg-surface divide-y divide-border mb-8">
+          {fields.map(({ icon: Icon, label, key }) => (
+            <div key={key} className="flex items-center gap-3 px-4 py-2.5">
+              <Icon size={14} className="text-dim shrink-0" />
+              <span className="text-[12px] text-dim w-20 shrink-0">{label}</span>
+              {isEditing && key !== 'joinDate'
+                ? <input value={profile[key]} onChange={(e) => setProfile((p) => ({ ...p, [key]: e.target.value }))} className={inputClass} />
+                : <span className="text-[13px] text-fg truncate">{profile[key] || <span className="text-dim">—</span>}</span>}
             </div>
           ))}
         </div>
 
-        {/* Save Button (when editing) */}
         {isEditing && (
-          <div className="flex gap-3 px-4 mb-8">
-            <button
-              onClick={handleSave}
-              className="flex-1 py-2 bg-[#1e4b4a] hover:bg-[#255c5a] text-white rounded border border-[#2b6b69] text-sm transition-colors cursor-pointer"
-            >
-              Save Changes
-            </button>
-            <button
-              onClick={() => setIsEditing(false)}
-              className="px-6 py-2 bg-[#2a2a2a] hover:bg-[#3a3a3a] text-gray-300 rounded border border-[#3a3a3a] text-sm transition-colors cursor-pointer"
-            >
-              Cancel
-            </button>
+          <div className="flex gap-2 mb-8">
+            <button onClick={save} className="flex-1 py-1.5 rounded-md bg-primary text-black text-[12.5px] font-semibold hover:brightness-110">Save</button>
+            <button onClick={() => setIsEditing(false)} className="px-4 py-1.5 rounded-md border border-border-strong text-[12.5px] text-muted hover:text-fg">Cancel</button>
           </div>
         )}
 
-        {/* Stats */}
-        <div className="border-t border-[#1a3a3a] pt-6 px-4">
-          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4">Activity</h3>
-          <div className="grid grid-cols-3 gap-4">
-            {[
-              { label: 'Projects', value: '12' },
-              { label: 'Queries', value: '284' },
-              { label: 'Hours', value: '47' },
-            ].map(stat => (
-              <div key={stat.label} className="bg-[#052122] border border-[#0f3435] rounded-lg p-4 text-center">
-                <div className="text-xl font-semibold text-gray-100">{stat.value}</div>
-                <div className="text-xs text-gray-500 mt-1">{stat.label}</div>
-              </div>
-            ))}
-          </div>
+        <h2 className="mb-2.5 font-mono text-[11px] tracking-[0.12em] text-dim">ACTIVITY ON THIS PC</h2>
+        <div className="grid grid-cols-3 gap-3 mb-3">
+          {[['Sessions', stats?.sessions], ['Projects', stats?.projects], ['Completed', stats?.done]].map(([label, value]) => (
+            <div key={label as string} className="rounded-lg border border-border bg-surface p-4">
+              <div className="font-mono text-[22px] text-fg">{value ?? '—'}</div>
+              <div className="text-[11.5px] text-dim mt-0.5">{label}</div>
+            </div>
+          ))}
         </div>
+        <p className="text-[11.5px] text-dim mb-10">Counted from the agent sessions stored locally. Nothing is uploaded.</p>
 
-        {/* Sign Out */}
-        <div className="px-4 mt-8 mb-12">
-          <button 
-            onClick={handleSignOut}
-            className="w-full py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded border border-red-500/20 text-sm transition-colors cursor-pointer"
-          >
-            Sign Out
-          </button>
-        </div>
+        <button onClick={reset} onBlur={() => setConfirmReset(false)}
+          className="w-full py-2 rounded-md border border-danger/30 text-danger text-[12.5px] hover:bg-danger/10">
+          {confirmReset ? 'Click again to reset your profile' : 'Reset profile'}
+        </button>
       </div>
     </div>
   );

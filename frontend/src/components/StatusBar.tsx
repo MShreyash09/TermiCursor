@@ -1,4 +1,5 @@
-import { XCircle, CheckCircle, Download, AlertTriangle } from 'lucide-react';
+import { Download, RotateCw } from 'lucide-react';
+import { StatusDot } from './ui';
 
 interface StatusBarProps {
   backendStatus: any;
@@ -6,92 +7,66 @@ interface StatusBarProps {
   isPullingModels: boolean;
   onInstallModels: () => void;
   onRetryConnection: () => void;
+  isIngesting?: boolean;
 }
 
-export default function StatusBar({ backendStatus, pullProgress, isPullingModels, onInstallModels, onRetryConnection }: StatusBarProps) {
-  const renderBackendStatus = () => {
-    if (!backendStatus) return (
-      <div className="flex items-center gap-1.5 text-gray-500">
-        <div className="w-2 h-2 rounded-full bg-gray-500 animate-pulse" />
-        Connecting...
-      </div>
-    );
+const GREEN = '#39ff14', ORANGE = '#ffb000', RED = '#ff4d4d', DIM = '#6b6b6b';
 
-    if (backendStatus.status === 'ok') {
+export default function StatusBar({ backendStatus, pullProgress, isPullingModels, onInstallModels, onRetryConnection, isIngesting }: StatusBarProps) {
+  const s = backendStatus;
+
+  const left = () => {
+    if (!s) return <span className="flex items-center gap-2 text-dim"><StatusDot color={DIM} pulse /> Starting backend…</span>;
+    if (s.reason === 'connection_error' || s.reason === 'ollama_error') {
       return (
-        <div className="flex items-center gap-1.5 text-green-500/80 hover:text-green-400 cursor-pointer transition-colors" title="Backend & Ollama Connected">
-          <CheckCircle size={13} />
-          <span>Ollama Ready</span>
-        </div>
+        <span className="flex items-center gap-3">
+          <button onClick={onRetryConnection} title="Retry" className="flex items-center gap-2 text-danger hover:brightness-125">
+            <StatusDot color={RED} /> Ollama offline <RotateCw size={11} />
+          </button>
+          <a href="https://ollama.com/download" target="_blank" rel="noreferrer" className="text-muted hover:text-fg underline underline-offset-2">Get Ollama</a>
+        </span>
       );
     }
-
-    if (backendStatus.status === 'error') {
-      if (backendStatus.reason === 'connection_error') {
-        return (
-          <div className="flex items-center gap-3">
-            <div onClick={onRetryConnection} className="flex items-center gap-1.5 text-red-400 hover:text-red-300 cursor-pointer transition-colors px-2 bg-red-900/30 rounded-sm" title="Click to retry connection">
-              <XCircle size={13} />
-              <span>Ollama Offline</span>
-            </div>
-            {/* Opens in the system browser (main.cjs setWindowOpenHandler). */}
-            <a href="https://ollama.com/download" target="_blank" rel="noreferrer"
-              className="text-white/90 hover:text-white underline underline-offset-2"
-              title="TermiCursor runs models locally with Ollama. Install it, start it, and this turns green.">
-              Get Ollama
-            </a>
-          </div>
-        );
-      }
-
-      if (backendStatus.reason === 'missing_models') {
-        return (
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5 text-yellow-500 hover:text-yellow-400 cursor-pointer transition-colors px-2 bg-yellow-900/30 rounded-sm">
-              <AlertTriangle size={13} />
-              <span>Models Missing</span>
-            </div>
-
-            {isPullingModels ? (
-              <div className="flex items-center gap-3">
-                <Download size={13} className="text-cyan-400 animate-bounce" />
-                {backendStatus.missing_models.map((model: string) => (
-                  <div key={model} className="flex items-center gap-2">
-                    <span className="text-gray-400">{model}</span>
-                    <div className="w-16 bg-gray-800 rounded-full h-1 overflow-hidden">
-                      <div
-                        className="bg-cyan-500 h-1 rounded-full transition-all duration-300"
-                        style={{ width: `${pullProgress[model] ?? 0}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <button onClick={onInstallModels} className="text-cyan-400 hover:text-cyan-300 flex items-center gap-1 transition-colors">
-                <Download size={13} />
-                Install Now
-              </button>
-            )}
-          </div>
-        );
-      }
+    if (s.reason === 'missing_models') {
+      return (
+        <span className="flex items-center gap-3">
+          <span className="flex items-center gap-2 text-warn"><StatusDot color={ORANGE} /> Models missing</span>
+          {isPullingModels ? (
+            s.missing_models.map((m: string) => (
+              <span key={m} className="flex items-center gap-2 text-muted">
+                <Download size={11} className="text-warn" /> {m}
+                <span className="w-16 h-1 rounded-full bg-border-strong overflow-hidden">
+                  <span className="block h-full bg-warn transition-all" style={{ width: `${pullProgress[m] ?? 0}%` }} />
+                </span>
+                <span className="text-dim">{pullProgress[m] ?? 0}%</span>
+              </span>
+            ))
+          ) : (
+            <button onClick={onInstallModels} className="flex items-center gap-1 text-warn hover:brightness-125">
+              <Download size={11} /> Install {s.missing_models.join(', ')}
+            </button>
+          )}
+        </span>
+      );
     }
+    return (
+      <span className="flex items-center gap-2 text-muted" title="Backend and model ready">
+        <StatusDot color={GREEN} /> <span className="text-primary">ready</span>
+        {s.model && <><span className="text-dim">·</span> <span className="text-fg">{s.model}</span> <span className="text-dim">{s.provider}</span></>}
+      </span>
+    );
   };
 
   return (
-    <div className="h-[22px] bg-[#007acc] border-t border-border flex items-center justify-between px-3 text-[11px] font-mono text-white select-none z-50">
-      <div className="flex items-center gap-4 h-full">
-        {/* <div className="flex items-center gap-1.5 text-white/90 hover:text-white cursor-pointer transition-colors">
-          <GitBranch size={13} />
-          <span>main*</span>
-        </div> */}
-        {renderBackendStatus()}
+    <div data-testid="status-bar"
+      className="h-6 shrink-0 bg-surface border-t border-border flex items-center justify-between px-3 text-[11px] font-mono select-none z-50">
+      <div className="flex items-center gap-4 min-w-0 truncate">
+        {left()}
+        {isIngesting && <span className="flex items-center gap-2 text-muted"><StatusDot color={ORANGE} pulse /> indexing project…</span>}
       </div>
-
-      <div className="flex items-center gap-4 text-white/80 h-full">
-        {/* <div className="hover:text-white cursor-pointer transition-colors">UTF-8</div> */}
-        <div className="hover:text-white cursor-pointer transition-colors">TermiCursor</div>
+      <div className="flex items-center gap-4 text-dim shrink-0">
+        <span>UTF-8</span>
+        <span><span className="text-fg">termi</span><span className="text-primary">cursor</span>{s?.version ? ` v${s.version}` : ''}</span>
       </div>
     </div>
   );

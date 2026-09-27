@@ -58,15 +58,26 @@ agent code lives in `core/` (`core/agent`, `core/tools`, `core/memory`,
    Heuristics resolve most cases with zero LLM calls.
 2. **Plan (complex only):** decomposes the goal into an ordered task list.
 3. **Execute:** each step runs a bounded ReAct loop — the model emits one JSON
-   tool-call per turn (`read_file`, `write_file`, `list_dir`, `delete_file`,
-   `run_shell_command`, `search_codebase`, `browser_navigate`, `browser_click`,
-   `browser_get_text`), validated against a schema, executed, and fed back —
-   until it returns a final answer.
-4. **Trust gate:** destructive shell commands, deletes, and out-of-project writes pause
-   for your approval before running.
-5. **Stream + stop:** every step streams live over `WS /ws/agent/{session_id}`; a
+   tool-call per turn, validated against a schema, executed, and fed back — until it
+   returns a final answer. Tools, modeled on Cursor / Claude Code:
+   - find: `grep` (exact text/regex, with context lines), `find_files` (glob), `list_dir`,
+     `search_codebase` (semantic; falls back to text search when the project isn't indexed)
+   - read: `read_file` (numbered lines, 200-line pages)
+   - change: `edit_file` (exact `old_string` → `new_string`, must match once; empty
+     `old_string` appends), `write_file` (new files), `delete_file`
+   - run/verify: `run_shell_command`, `browser_navigate` / `browser_click` / `browser_get_text`
+4. **Grounding rules** (`core/agent/context.py`, `loop.py`), so a small model looks
+   instead of guessing: files named in the request are read up front (like an
+   @-mention); the prompt includes the project's file list; answering a question
+   about the project without looking gets one nudge; a change request that ends
+   without any edit gets one nudge; `write_file` over an unread file, or one that
+   would erase most of it, is refused; edits keep the file's line endings and report
+   a syntax check.
+5. **Trust gate:** every shell command (unless auto-approve is on; destructive ones
+   always), deletes, and out-of-project writes pause for your approval.
+6. **Stream + stop:** every step streams live over `WS /ws/agent/{session_id}`; a
    running agent can be stopped at any time (`POST /sessions/{id}/cancel`).
-6. **Browser verification (text-only, no vision):** qwen2.5-coder:3b can't see
+7. **Browser verification (text-only, no vision):** qwen2.5-coder:3b can't see
    images, so `browser_navigate`/`browser_click`/`browser_get_text` give it back
    extracted page text and console/network errors — never pixels — to verify a
    web app it built. Separately, and purely for you, the **entire browser
@@ -130,6 +141,12 @@ python cli.py
 
 # Tests (offline; tests/live_* need a running Ollama)
 python -m pytest -q tests --ignore-glob="tests/live_*"
+
+# Agent eval against your Ollama: does it use its tools and get the right answer?
+python tests/live_agent_eval.py            # 11 tasks x 2 reps, prints a pass table
+
+# End-to-end GUI test: drives the real Electron app (own backend + Vite on free ports)
+cd frontend && node e2e/run-e2e.mjs        # screenshots in frontend/e2e/screenshots
 ```
 
 In dev, the backend runs without the per-launch token (only the packaged app sets

@@ -60,20 +60,17 @@ export function useAgentSocket(backendPort: number, projectPath: string): UseAge
     switch (ev.type) {
       case 'mode':
         setMode(ev.mode);
-        pushLog({
-          kind: 'info',
-          text: ev.mode === 'simple' ? 'Answering directly…' : 'Complex task — planning first…',
-        });
+        pushLog({ kind: 'info', text: ev.mode === 'simple' ? 'Working on it directly' : 'Planning the steps first' });
         break;
       case 'plan':
         setSteps(ev.steps);
         setStatus('running');
-        pushLog({ kind: 'info', text: `Planned ${ev.steps.length} step(s).` });
+        pushLog({ kind: 'info', text: `Plan has ${ev.steps.length} step${ev.steps.length === 1 ? '' : 's'}` });
         break;
       case 'plan_review':
         setSteps(ev.steps);
         setStatus('awaiting_plan_approval');
-        pushLog({ kind: 'info', text: `Plan ready (${ev.steps.length} step(s)) — review it before coding starts.` });
+        pushLog({ kind: 'info', text: 'Plan ready: review it above before any code is written' });
         break;
       case 'task_update':
         setSteps(prev => prev.map(s =>
@@ -83,20 +80,20 @@ export function useAgentSocket(backendPort: number, projectPath: string): UseAge
         pushLog({ kind: 'thought', text: ev.text });
         break;
       case 'tool_call':
-        pushLog({ kind: 'tool_call', text: `${ev.tool}(${JSON.stringify(ev.args)})` });
+        pushLog({ kind: 'tool_call', text: ev.tool, tool: ev.tool, args: ev.args });
         break;
       case 'approval_needed':
         setStatus('blocked');
         setPendingApproval({ call_id: ev.call_id, tool: ev.tool, args: ev.args });
         break;
       case 'tool_result':
-        pushLog({ kind: 'tool_result', ok: ev.success, text: ev.output });
+        pushLog({ kind: 'tool_result', ok: ev.success, text: ev.output, tool: ev.tool });
         break;
       case 'artifact_created':
         setArtifacts(prev => [...prev, ev.artifact]);
         break;
       case 'step_done':
-        if (ev.summary) pushLog({ kind: 'info', text: `✓ ${ev.summary}` });
+        if (ev.summary) pushLog({ kind: 'answer', text: ev.summary });
         break;
       case 'session_done':
         sawDoneRef.current = true;
@@ -117,7 +114,7 @@ export function useAgentSocket(backendPort: number, projectPath: string): UseAge
     setSteps([]); setArtifacts([]); setLog([]); setPendingApproval(null); setMode(null);
     sawDoneRef.current = false;
     setStatus('planning');
-    pushLog({ kind: 'info', text: `Goal: ${goal}` });
+    pushLog({ kind: 'goal', text: goal, agent });
 
     let id: string;
     try {

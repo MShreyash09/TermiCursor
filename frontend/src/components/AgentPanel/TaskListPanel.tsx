@@ -1,30 +1,33 @@
-import { CheckCircle2, Circle, Loader2, XCircle } from 'lucide-react';
+import { Check, Loader2, X } from 'lucide-react';
 import type { TaskStep } from '../../types/agent';
 
-const ICONS = {
-  pending: <Circle size={14} className="text-gray-500 shrink-0 mt-0.5" />,
-  in_progress: <Loader2 size={14} className="text-primary shrink-0 mt-0.5 animate-spin" />,
-  done: <CheckCircle2 size={14} className="text-green-400 shrink-0 mt-0.5" />,
-  failed: <XCircle size={14} className="text-red-400 shrink-0 mt-0.5" />,
+const ICON = {
+  pending: <span className="w-3.5 h-3.5 rounded-full border border-border-strong shrink-0 mt-[3px]" />,
+  in_progress: <Loader2 size={14} className="text-build shrink-0 mt-[2px] animate-spin" />,
+  done: <span className="w-3.5 h-3.5 rounded-full bg-primary flex items-center justify-center shrink-0 mt-[3px]"><Check size={10} className="text-black" strokeWidth={3} /></span>,
+  failed: <span className="w-3.5 h-3.5 rounded-full bg-danger flex items-center justify-center shrink-0 mt-[3px]"><X size={10} className="text-black" strokeWidth={3} /></span>,
 };
 
 export default function TaskListPanel({ steps }: { steps: TaskStep[] }) {
-  if (steps.length === 0) return null;
+  // A single step is just the request itself (direct answer): no plan to show.
+  if (steps.length <= 1) return null;
+  const done = steps.filter((s) => s.status === 'done').length;
   return (
-    <div className="border-b border-border">
-      <div className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-        Plan
+    <div className="border-b border-border px-3 py-2.5" data-testid="task-list">
+      <div className="flex items-center justify-between mb-2">
+        <span className="font-mono text-[10.5px] tracking-wider text-dim">PLAN</span>
+        <span className="font-mono text-[10.5px] text-dim">{done}/{steps.length}</span>
       </div>
-      <ul className="px-4 pb-3 space-y-1.5">
+      <ol className="space-y-1.5">
         {steps.map((step, i) => (
-          <li key={step.id} className="flex gap-2 text-sm">
-            {ICONS[step.status]}
-            <span className={step.status === 'done' ? 'text-gray-500 line-through' : 'text-gray-300'}>
-              <span className="text-gray-500 mr-1">{i + 1}.</span>{step.description}
+          <li key={step.id} className="flex gap-2 text-[12.5px] leading-snug">
+            {ICON[step.status]}
+            <span className={step.status === 'done' ? 'text-dim' : step.status === 'in_progress' ? 'text-fg' : 'text-muted'}>
+              <span className="text-dim mr-1 font-mono text-[11px]">{i + 1}.</span>{step.description}
             </span>
           </li>
         ))}
-      </ul>
+      </ol>
     </div>
   );
 }

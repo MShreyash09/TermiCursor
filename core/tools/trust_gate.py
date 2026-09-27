@@ -31,7 +31,7 @@ _DESTRUCTIVE_SHELL = [
 _DESTRUCTIVE_RE = re.compile("|".join(_DESTRUCTIVE_SHELL), re.IGNORECASE)
 
 _ALWAYS_SAFE = {
-    "read_file", "list_dir", "search_codebase",
+    "read_file", "list_dir", "search_codebase", "grep", "find_files",
     "browser_navigate", "browser_click", "browser_get_text",
 }
 
@@ -56,7 +56,7 @@ def classify_risk(tool_name: str, args: dict, project_root: str) -> Risk:
     if tool_name in _ALWAYS_SAFE:
         return "safe"
 
-    if tool_name in ("write_file", "delete_file"):
+    if tool_name in ("write_file", "edit_file", "delete_file"):
         path = (args or {}).get("path", "")
         if _path_escapes_project(project_root, path):
             return "needs_approval"

@@ -54,20 +54,24 @@ export default function TerminalPanel({ projectPath }: TerminalPanelProps) {
     term.open(terminalRef.current);
     xtermRef.current = term;
 
+    let disposed = false;
     const fit = () => {
-      if (term.element && term.element.clientWidth > 0) {
+      // xterm throws ("reading 'dimensions'") if fit runs before its renderer exists
+      // or after dispose; both happen during layout changes.
+      if (disposed || !term.element || term.element.clientWidth === 0) return;
+      try {
         fitAddon.fit();
         setSize({ cols: term.cols, rows: term.rows });
-      }
+      } catch { /* renderer not ready yet; the next resize will fit */ }
     };
     const applyFont = (s: any) => {
-      if (!s) return;
+      if (!s || disposed) return;
       if (s.fontFamily) term.options.fontFamily = fontStack(s.fontFamily);
       if (s.fontSize) term.options.fontSize = parseInt(s.fontSize);
       fit();
     };
     api?.loadSettings?.().then(applyFont);
-    api?.onSettingsChanged?.(applyFont);
+    const offSettings = api?.onSettingsChanged?.(applyFont);
     document.fonts.ready.then(fit);
 
     const resizeObserver = new ResizeObserver(() => requestAnimationFrame(fit));
@@ -130,8 +134,15 @@ export default function TerminalPanel({ projectPath }: TerminalPanelProps) {
     }
 
     return () => {
+      disposed = true;
+      offSettings?.();
       unsubscribe?.();
       resizeObserver.disconnect();
+      // xterm 5.3 bug: dispose() queues a viewport refresh that then reads the freed renderer
+      // ("Cannot read properties of undefined (reading 'dimensions')"). Disarm it first.
+      // ponytail: relies on a private xterm field; drop it after moving to @xterm/xterm 5.5+.
+      const viewport = (term as any)._core?.viewport;
+      if (viewport) viewport._innerRefresh = () => {};
       term.dispose();
     };
   }, [projectPath]);
@@ -140,21 +151,22 @@ export default function TerminalPanel({ projectPath }: TerminalPanelProps) {
   const folder = projectPath.split(/[\\/]/).filter(Boolean).pop() ?? projectPath;
 
   return (
-    <div className="w-full h-full bg-black border-t border-border flex flex-col min-w-0">
-      <div className="h-8 flex items-center justify-between bg-[#0c0c0c] border-b border-[#1f1f1f] shrink-0 pr-2">
+    <div className="w-full h-full bg-background border-t border-border flex flex-col min-w-0" data-testid="terminal">
+      <div className="h-8 flex items-center justify-between bg-surface border-b border-border shrink-0 pr-2">
         <div className="flex items-center h-full min-w-0">
-          <div className="flex items-center gap-2 h-full px-3 bg-black border-r border-[#1f1f1f] border-t-2 border-t-[#39ff14] min-w-0">
-            <TerminalSquare size={13} className="text-[#39ff14] shrink-0" />
-            <span className="text-[12px] text-gray-200 truncate">{shellName}</span>
-            <span className="hidden sm:inline text-[11px] text-gray-500 truncate">· {folder}</span>
+          <div className="relative flex items-center gap-2 h-full px-3 bg-background border-r border-border min-w-0">
+            <span className="absolute left-0 right-0 top-0 h-[2px] bg-primary" />
+            <TerminalSquare size={13} className="text-primary shrink-0" />
+            <span className="text-[12px] text-fg truncate">{shellName}</span>
+            <span className="hidden sm:inline text-[11px] text-dim truncate">· {folder}</span>
           </div>
         </div>
         <div className="flex items-center gap-3 shrink-0">
           {size.cols > 0 && (
-            <span className="hidden md:inline text-[10px] text-gray-600 font-mono">{size.cols}×{size.rows}</span>
+            <span className="hidden md:inline text-[10.5px] text-dim font-mono">{size.cols}×{size.rows}</span>
           )}
-          <button onClick={() => xtermRef.current?.clear()} title="Clear (Ctrl+L)"
-            className="text-gray-500 hover:text-[#ff4d4d]">
+          <button onClick={() => xtermRef.current?.clear()} title="Clear"
+            className="text-dim hover:text-danger">
             <Trash2 size={13} />
           </button>
         </div>

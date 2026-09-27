@@ -11,6 +11,7 @@ import SettingsPage from './components/SettingsPage';
 import StatusBar from './components/StatusBar';
 import CommandPalette from './components/CommandPalette';
 import TerminalPanel from './components/TerminalPanel';
+import { Kbd } from './components/ui';
 import { backendUrl, setBackendToken } from './backend';
 
 function App() {
@@ -20,7 +21,7 @@ function App() {
   const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
   const [activeView, setActiveView] = useState('explorer');
   const [fileTreeRefreshKey, setFileTreeRefreshKey] = useState(0);
-  const [backendPort, setBackendPort] = useState(8000);
+  const [backendPort, setBackendPort] = useState(0);  // 0 = not known yet
   const [backendStatus, setBackendStatus] = useState<any>(null);
   const [isPullingModels, setIsPullingModels] = useState(false);
   const [pullProgress, setPullProgress] = useState<Record<string, number>>({});
@@ -127,6 +128,7 @@ function App() {
   // The packaged backend takes a few seconds to boot, and first-time users may
   // still be installing/starting Ollama: keep polling until everything is ready.
   useEffect(() => {
+    if (!backendPort) return;
     let cancelled = false;
     let timer: number | undefined;
     const poll = async () => {
@@ -208,6 +210,8 @@ function App() {
         setBackendToken(token);
         setBackendPort(port);
       });
+    } else {
+      setBackendPort(8000);
       // @ts-ignore
       window.electronAPI.loadSettings();
     }
@@ -237,65 +241,53 @@ function App() {
     }
   }, []);
 
-  const dummyCode = `import os
-import sys
-from langchain_ollama import OllamaEmbeddings
+  // Open a project folder: show it, remember it, and (if enabled) build the search index.
+  // Missing models don't block anything: the status bar and welcome checklist offer the
+  // download, and code search falls back to exact text search without an index.
+  const openProject = async (folderPath: string) => {
+    const api = (window as any).electronAPI;
+    setProjectPath(folderPath);
+    setOpenFiles([]);
+    setActiveFilePath(null);
+    setActiveView('explorer');
+    api?.saveRecentFolder?.(folderPath).then((updated: any[]) => {
+      if (Array.isArray(updated)) setRecentFolders(updated);
+    });
 
-# Welcome to Termicursor Desktop UI!
-# This is the Monaco Editor.
-# You can interact with your codebase using the chat on the left.
+    const settings = (await api?.loadSettings?.()) ?? {};
+    if (settings.autoIngest === false || backendStatus?.status !== 'ok') return;
+    setIsIngesting(true);
+    try {
+      const response = await fetch(backendUrl(backendPort, '/ingest'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_path: folderPath }),
+      });
+      if (!response.ok) console.warn('Indexing skipped:', await response.text());
+    } catch (error) {
+      console.warn('Indexing failed:', error);
+    } finally {
+      setIsIngesting(false);
+    }
+  };
 
-def main():
-    print("Termicursor is ready!")
-
-if __name__ == "__main__":
-    main()
-`;
+  // Files changed on disk (the agent edited them, or a refresh): re-read open tabs. A tab is
+  // replaced only if the disk differs from what it was loaded with, so unsaved typing in a
+  // file the agent didn't touch is never overwritten.
+  useEffect(() => {
+    if (!fileTreeRefreshKey) return;
+    const api = (window as any).electronAPI;
+    openFiles.forEach(async (f) => {
+      const disk = await api?.readFile?.(f.path);
+      if (typeof disk === 'string' && disk !== f.content) {
+        setOpenFiles(prev => prev.map(o => (o.path === f.path ? { ...o, content: disk } : o)));
+      }
+    });
+  }, [fileTreeRefreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleOpenFolder = async () => {
-    // @ts-ignore
-    if (window.electronAPI && window.electronAPI.openFolder) {
-      // @ts-ignore
-      const folderPath = await window.electronAPI.openFolder();
-      if (folderPath) {
-        setProjectPath(folderPath);
-        setOpenFiles([]);
-        setActiveFilePath(null);
-        setActiveView('explorer');
-        // Save to recent folders
-        // @ts-ignore
-        if (window.electronAPI && window.electronAPI.saveRecentFolder) {
-          // @ts-ignore
-          window.electronAPI.saveRecentFolder(folderPath).then((updated: any[]) => {
-            if (Array.isArray(updated)) setRecentFolders(updated);
-          });
-        }
-        
-        if (backendStatus?.missing_models && backendStatus.missing_models.length > 0) {
-          alert(`Missing Ollama models: ${backendStatus.missing_models.join(', ')}. They will be downloaded now. Please wait.`);
-          await handleInstallModels();
-        }
-
-        setIsIngesting(true);
-        try {
-          const response = await fetch(backendUrl(backendPort, '/ingest'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ project_path: folderPath }),
-          });
-          if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
-            console.error("Ingestion failed:", errorData);
-            alert(`Ingestion notice: ${errorData.detail || 'Unknown error'}. Please check that Ollama is running and models are pulled.`);
-          }
-        } catch (error) {
-          console.error("Failed to auto-ingest folder:", error);
-          alert("Couldn't reach the TermiCursor backend. Try restarting the app.");
-        } finally {
-          setIsIngesting(false);
-        }
-      }
-    }
+    const folderPath = await (window as any).electronAPI?.openFolder?.();
+    if (folderPath) await openProject(folderPath);
   };
 
   // ── Physical file delete handler ──
@@ -322,51 +314,17 @@ if __name__ == "__main__":
     }
   };
 
-  // ── Open a recent folder by its saved path ──
-  const handleOpenRecentFolder = async (folderPath: string) => {
-    setProjectPath(folderPath);
-    setOpenFiles([]);
-    setActiveFilePath(null);
-    setActiveView('explorer');
-    // Save to recent folders (moves it to top)
-    // @ts-ignore
-    if (window.electronAPI && window.electronAPI.saveRecentFolder) {
-      // @ts-ignore
-      window.electronAPI.saveRecentFolder(folderPath).then((updated: any[]) => {
-        if (Array.isArray(updated)) setRecentFolders(updated);
-      });
-    }
-
-    if (backendStatus?.missing_models && backendStatus.missing_models.length > 0) {
-      alert(`Missing Ollama models: ${backendStatus.missing_models.join(', ')}. They will be downloaded now. Please wait.`);
-      await handleInstallModels();
-    }
-
-    setIsIngesting(true);
-    try {
-      const response = await fetch(backendUrl(backendPort, '/ingest'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ project_path: folderPath }),
-      });
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
-        console.error("Ingestion failed:", errorData);
-        alert(`Ingestion notice: ${errorData.detail || 'Unknown error'}. Please check that Ollama is running and models are pulled.`);
-      }
-    } catch (error) {
-      console.error("Failed to auto-ingest folder:", error);
-      alert("Couldn't reach the TermiCursor backend. Try restarting the app.");
-    } finally {
-      setIsIngesting(false);
-    }
-  };
-
   // Determine what to render in the center panel
   const renderCenterContent = () => {
-    if (activeView === 'profile') return <ProfilePage />;
+    if (activeView === 'profile') return <ProfilePage backendPort={backendPort} />;
     if (activeView === 'settings') return <SettingsPage />;
-    if (!projectPath || openFiles.length === 0) return <WelcomeScreen onOpenFolder={handleOpenFolder} recentFolders={recentFolders} onOpenRecentFolder={handleOpenRecentFolder} />;
+    if (!projectPath || openFiles.length === 0) {
+      return (
+        <WelcomeScreen onOpenFolder={handleOpenFolder} recentFolders={recentFolders} onOpenRecentFolder={openProject}
+          backendStatus={backendStatus} onInstallModels={handleInstallModels} isPullingModels={isPullingModels}
+          projectPath={projectPath} />
+      );
+    }
     return (
       <EditorView
         openFiles={openFiles}
@@ -383,82 +341,57 @@ if __name__ == "__main__":
           });
         }}
         onDeleteFile={handleDeleteFile}
-        dummyCode={dummyCode}
+        projectPath={projectPath}
       />
     );
   };
 
   return (
-    <div className="w-screen h-screen flex flex-col bg-background text-gray-200 overflow-hidden font-sans">
+    <div className="w-screen h-screen flex flex-col bg-background text-fg overflow-hidden font-sans">
       <CommandPalette
         onToggleTerminal={toggleTerminal}
         onToggleSidebar={toggleFileTree}
         onOpenSettings={() => setActiveView('settings')}
+        onOpenFolder={handleOpenFolder}
+        onToggleAgent={toggleAiChat}
+        onShowShortcuts={() => setShowShortcuts(true)}
       />
-      <TitleBar />
+      <TitleBar projectName={projectPath.split(/[\\/]/).filter(Boolean).pop()} />
 
       {updateAvailable && (
-        <div className="bg-[#162031] border-b border-cyan-800/30 text-gray-300 text-xs px-4 py-2 flex items-center justify-between shrink-0 z-[100] transition-all">
-          <div className="flex items-center gap-2">
-            <div className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
-            </div>
-            <span>
-              {updateDownloaded
-                ? `Update v${updateAvailable} has been downloaded and is ready to install!`
-                : `A new update (v${updateAvailable}) is downloading in the background...`}
-            </span>
-          </div>
+        <div className="h-8 bg-surface border-b border-border text-[12px] text-muted px-4 flex items-center justify-between shrink-0 z-[100]">
+          <span className="flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-primary shadow-[0_0_6px_#39ff14]" />
+            {updateDownloaded
+              ? <>Version <span className="text-fg">{updateAvailable}</span> is ready to install.</>
+              : <>Downloading version <span className="text-fg">{updateAvailable}</span> in the background…</>}
+          </span>
           {updateDownloaded && (
-            <button
-              onClick={() => {
-                // @ts-ignore
-                if (window.electronAPI && window.electronAPI.installUpdate) {
-                  // @ts-ignore
-                  window.electronAPI.installUpdate();
-                }
-              }}
-              className="bg-cyan-600 hover:bg-cyan-500 active:bg-cyan-700 text-white font-medium px-3 py-1 rounded-md transition-colors text-[11px] shadow-sm cursor-pointer"
-            >
-              Restart & Update
+            <button onClick={() => (window as any).electronAPI?.installUpdate?.()}
+              className="rounded-md bg-primary px-2.5 py-0.5 text-[11.5px] font-semibold text-black hover:brightness-110">
+              Restart &amp; update
             </button>
           )}
         </div>
       )}
 
       {showShortcuts && (
-        <div className="absolute inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowShortcuts(false)}>
-          <div className="bg-[#1e1e1e] border border-[#333] rounded-lg shadow-xl w-[400px] overflow-hidden" onClick={e => e.stopPropagation()}>
-            <div className="px-4 py-3 border-b border-[#333] flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-gray-200">Keyboard Shortcuts</h3>
-              <button onClick={() => setShowShortcuts(false)} className="text-gray-400 hover:text-white">✕</button>
+        <div className="absolute inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setShowShortcuts(false)}>
+          <div className="bg-surface border border-border-strong rounded-xl shadow-2xl w-[380px] overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+              <h3 className="font-mono text-[11px] tracking-[0.12em] text-dim">KEYBOARD SHORTCUTS</h3>
+              <button onClick={() => setShowShortcuts(false)} className="text-dim hover:text-fg text-[13px]">✕</button>
             </div>
-            <div className="p-4 space-y-3 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-400">Toggle File Tree</span>
-                <kbd className="bg-[#333] px-2 py-1 rounded text-xs font-mono">Ctrl + B</kbd>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Toggle Terminal</span>
-                <kbd className="bg-[#333] px-2 py-1 rounded text-xs font-mono">Ctrl + `</kbd>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Toggle AI Chat</span>
-                <kbd className="bg-[#333] px-2 py-1 rounded text-xs font-mono">Ctrl + L</kbd>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Settings</span>
-                <kbd className="bg-[#333] px-2 py-1 rounded text-xs font-mono">Ctrl + ,</kbd>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Explorer View</span>
-                <kbd className="bg-[#333] px-2 py-1 rounded text-xs font-mono">Ctrl + E</kbd>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">View Shortcuts</span>
-                <kbd className="bg-[#333] px-2 py-1 rounded text-xs font-mono">Ctrl + /</kbd>
-              </div>
+            <div className="p-2">
+              {([
+                ['Toggle the agent panel', 'Ctrl+L'], ['Toggle the explorer', 'Ctrl+B'], ['Toggle the terminal', 'Ctrl+`'],
+                ['Command palette', 'Ctrl+P'], ['Settings', 'Ctrl+,'], ['Explorer view', 'Ctrl+E'], ['Save file', 'Ctrl+S'],
+                ['This overview', 'Ctrl+/'],
+              ] as [string, string][]).map(([label, keys]) => (
+                <div key={keys} className="flex items-center justify-between px-2.5 py-2 rounded-md hover:bg-surface-hover text-[12.5px]">
+                  <span className="text-muted">{label}</span><Kbd>{keys}</Kbd>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -467,6 +400,7 @@ if __name__ == "__main__":
       <div className="flex-1 flex overflow-hidden">
         <ActivityBar 
           activeView={activeView} 
+          onToggleAgent={toggleAiChat}
           onViewChange={(view) => {
             if (view === 'explorer') {
               if (activeView === 'explorer') {
@@ -511,9 +445,10 @@ if __name__ == "__main__":
               }}
               onOpenFolder={handleOpenFolder}
               refreshKey={fileTreeRefreshKey}
+              activePath={activeView === 'explorer' ? activeFilePath : null}
             />
           </Panel>
-          <PanelResizeHandle className="w-1.5 bg-surface hover:bg-primary active:bg-primary cursor-col-resize transition-colors" />
+          <PanelResizeHandle className="w-px bg-border hover:bg-primary active:bg-primary cursor-col-resize transition-colors" />
 
           {/*editor resizing*/}
           <Panel defaultSize={55} minSize={30}>
@@ -521,7 +456,7 @@ if __name__ == "__main__":
               <Panel defaultSize={80} minSize={20}>
                 {renderCenterContent()}
               </Panel>
-              <PanelResizeHandle className="h-1.5 bg-surface border-t border-border hover:bg-primary active:bg-primary cursor-row-resize transition-colors z-50" />
+              <PanelResizeHandle className="h-px bg-border hover:bg-primary active:bg-primary cursor-row-resize transition-colors z-50" />
 
               {/* terminal resizing */}
               <Panel
@@ -532,14 +467,17 @@ if __name__ == "__main__":
               >
                 {projectPath && <TerminalPanel projectPath={projectPath} />}
                 {!projectPath && (
-                  <div className="w-full h-full bg-background border-t border-border flex items-center justify-center text-xs text-gray-500">
-                    Open a folder to use the terminal
+                  <div className="w-full h-full bg-background flex flex-col">
+                    <div className="h-8 shrink-0 bg-surface border-b border-border flex items-center px-3 font-mono text-[11px] tracking-[0.12em] text-dim">TERMINAL</div>
+                    <div className="flex-1 flex items-center justify-center font-mono text-[12px] text-dim">
+                      <span><span className="text-primary">$</span> open a folder to start a shell here</span>
+                    </div>
                   </div>
                 )}
               </Panel>
             </PanelGroup>
           </Panel>
-          <PanelResizeHandle className="w-1.5 bg-surface hover:bg-primary active:bg-primary cursor-col-resize transition-colors" />
+          <PanelResizeHandle className="w-px bg-border hover:bg-primary active:bg-primary cursor-col-resize transition-colors" />
           {/* AI chat side bar resizing */}
           <Panel
             panelRef={aiChatPanelRef}
@@ -553,9 +491,7 @@ if __name__ == "__main__":
               projectPath={projectPath}
               isIngesting={isIngesting}
               backendStatus={backendStatus}
-              onFilesChanged={() => {
-                setFileTreeRefreshKey(prev => prev + 1);
-              }}
+              onFilesChanged={() => setFileTreeRefreshKey(prev => prev + 1)}
             />
           </Panel>
         </PanelGroup>
@@ -567,6 +503,7 @@ if __name__ == "__main__":
         isPullingModels={isPullingModels}
         onInstallModels={handleInstallModels}
         onRetryConnection={() => checkStatus()}
+        isIngesting={isIngesting}
       />
     </div>
   );

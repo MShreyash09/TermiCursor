@@ -1,12 +1,27 @@
 import asyncio
+import re
 
 from pydantic import BaseModel, Field
 
 from .base import Tool, ToolResult
+from .grep_tools import grep
 
 # rag.py (top-level, trimmed to retrieval-only) already owns ingestion + the
 # Qdrant-backed retriever; this tool just wraps it for the agent loop.
 import rag
+
+
+_STOPWORDS = {"the", "a", "an", "and", "or", "of", "to", "in", "is", "are", "what", "which", "where",
+              "how", "does", "do", "for", "with", "that", "this", "it", "code", "file", "function", "set"}
+
+
+def _keyword_fallback(project_root: str, query: str) -> ToolResult:
+    words = [w for w in re.findall(r"[A-Za-z_][A-Za-z0-9_]{2,}", query) if w.lower() not in _STOPWORDS]
+    if not words:
+        return ToolResult(success=True, output="(no index yet, and no searchable words in the query; try grep)")
+    hits, _ = grep(project_root, "|".join(re.escape(w) for w in words[:6]), max_results=20, after=2)
+    note = "(Semantic index not built yet; showing text matches instead. Use grep for exact searches.)\n"
+    return ToolResult(success=True, output=note + ("\n".join(hits) if hits else "No matches."))
 
 
 class SearchCodebaseArgs(BaseModel):
@@ -17,8 +32,8 @@ class SearchCodebaseArgs(BaseModel):
 class SearchCodebaseTool(Tool):
     name = "search_codebase"
     description = (
-        "Semantically search the indexed codebase and return the most relevant "
-        "code chunks with their source file paths. Requires the project to be ingested."
+        "Search the code by meaning, for concept questions like 'where is auth handled'. "
+        "Returns relevant code chunks with file paths. For exact names or strings, use grep."
     )
     args_model = SearchCodebaseArgs
 
@@ -28,10 +43,9 @@ class SearchCodebaseTool(Tool):
     async def run(self, args: SearchCodebaseArgs, *, project_root: str) -> ToolResult:
         retriever = rag.get_retriever(self._project_path, k=args.k)
         if retriever is None:
-            return ToolResult(
-                success=False,
-                error="Codebase not indexed yet. Run ingestion first.",
-            )
+            # No index (e.g. the CLI never ingests). An error here made the model give up
+            # ("please run ingestion"), so fall back to a word search instead.
+            return _keyword_fallback(project_root, args.query)
         try:
             docs = await asyncio.to_thread(retriever.invoke, args.query)
         except Exception as e:

@@ -1,6 +1,7 @@
 import asyncio
 import os
 import random
+import re
 import sys
 import time
 
@@ -113,6 +114,11 @@ def welcome(project_path: str) -> None:
     console.rule(style="#1f3d1a")
 
 
+def codeify_dunders(text: str) -> str:
+    """Markdown reads "__init__.py" as bold "init.py": show dunder names as inline code."""
+    return re.sub(r"(^|[\s(])([\w./\\-]*__\w+__[\w./\\-]*)", r"\1`\2`", text)
+
+
 def block(body, color: str, title: str | None = None) -> None:
     console.print(Panel(body, title=title, title_align="left", border_style=color,
                         box=LEFT_BAR, padding=(0, 1)))
@@ -189,7 +195,7 @@ async def run_agent(project_path: str, goal: str):
                     console.print(Text.assemble(("  ✗ ", RED), (ev["output"][:500], RED)))
             elif t == "step_done":
                 if ev.get("summary"):
-                    block(Markdown(ev["summary"]), GREEN)
+                    block(Markdown(codeify_dunders(ev["summary"])), GREEN)
             elif t == "session_done":
                 live.stop()
                 elapsed = f"{time.monotonic() - started:.1f}s"
@@ -265,7 +271,7 @@ async def main_loop():
     def toolbar():
         parts = [
             (f"{agent_color()} bold", " " + state["agent"].capitalize()),
-            ("#777777", " · "), (f"{GREEN} bold", core.config.EXECUTOR_MODEL),
+            ("#777777", " · "), (f"{GREEN} bold", core.config.active_model()),
         ]
         width = console.width  # re-read on every redraw, so it follows window resizes
         if width >= 60:

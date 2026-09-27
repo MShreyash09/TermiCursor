@@ -97,3 +97,29 @@
 - **Ask mode can answer without reading the file.** "read rag.py and summarize what it does" produced a hedged guess with no `read_file` call (qwen2.5-coder:3b). Folder listings did use `list_dir`. Worth a prompt/tooling fix, e.g. auto-reading files named in the question.
 - **Markdown eats dunder names** in CLI answers: `__init__.py` renders as bold "init.py" (visible in `cli-ask.png`).
 - Mobbin MCP isn't connected in this environment; the design was done without it.
+
+## 2026-09-28 (round 6): agent tool calling + GUI redesign
+
+### Does tool calling work? Measured with `tests/live_agent_eval.py`
+11 tasks on a fixture project whose answers can't be guessed (e.g. `multiply()` has a planted bug), 2 reps each, qwen2.5-coder:3b on CPU.
+- **Baseline: 6/22.** Root causes: the quick-answer prompt said "use a tool only if you genuinely need to"; the executor never saw the file list; the only search was the vector index (the CLI never builds it → "please run ingestion"); only whole-file `write_file`, used without reading → `add`/`multiply` erased when "adding subtract"; Ollama's default 4096-token context overflowed.
+- **After the fixes: 19/22** (tools used in 22/22 runs). Per task: A1-A4, A6, B2-B4, S1 2/2; B1 1/2 (once couldn't disambiguate the repeated `return a + b` line); A5 0/2 (reads utils.py, then miscounts 4 functions as 3: a model-reasoning limit, not a tooling gap).
+
+### ✅ Agent changes (modeled on Cursor / Claude Code / Antigravity)
+- New tools: `grep` (exact/regex, context lines, works without an index), `find_files`, `edit_file` (exact replace, must match once, empty `old_string` appends; ambiguous/missing text errors list the candidate lines). `read_file` returns numbered, paged lines. `search_codebase` falls back to text search when there's no index.
+- Grounding: files named in a request are attached up front; the prompt includes the project file list and a concrete `edit_file` example; one "look first" nudge for unguided project answers; one "do the work" nudge when a change request ends without an edit.
+- Safety nets: `write_file` refused over an unread existing file, or when it would erase >30% of it; appending code that's already there is refused; syntax check after every write/edit; files keep their line endings (was: LF → CRLF on Windows).
+- Context: `num_ctx` 8192 (was Ollama's 4096 default); older tool results are shortened.
+- Planner: no "open/save the file" filler steps.
+- Custom OpenAI-compatible providers from Settings now actually work (were UI-only after the merge); `/status` reports provider/model/version.
+
+### ✅ GUI redesign (terminal palette) + real fixes found by E2E
+- New design tokens (black, green, blue/purple/green modes, orange tools, red errors; system fonts, offline). Redesigned title bar, activity bar, file tree (colored icons, active file), editor (Monaco theme, breadcrumbs), welcome (block logo, live "get started" checklist), project home, agent panel (structured transcript, markdown answers, collapsible tool output, example prompts, mode-colored composer), plan review, approvals, artifacts, status bar (model/provider/version), settings (search works, saved indicator), profile (real stats, no fake numbers), command palette, shortcuts overlay.
+- Settings that did nothing now work: auto save, shell choice, index-on-open, editor options (minimap, wrap, line numbers, tab size, brackets), live settings updates. Removed the fake color-theme picker.
+- Bugs fixed: xterm "reading 'dimensions'" crash; open tabs going stale after agent edits (and after "New conversation" the first changes were skipped entirely); premature `/status` polling on the wrong port; missing shell crashing the main process; blocking alerts and the silent 2 GB auto-download on folder open.
+- `frontend/e2e/run-e2e.mjs`: drives the real Electron app end to end (welcome → open project → editor → terminal → Ask → Plan review/approve → verify file on disk → settings/profile/palette → no JS errors). **9/9 checks pass.**
+
+### Still open
+- The 3B model's reasoning is the ceiling: it sometimes misreads evidence it found, or wanders on "verify" steps. A 7B coder model (e.g. `qwen2.5-coder:7b`) should do noticeably better if the hardware allows.
+- `xterm` 5.3 → `@xterm/xterm` migration would remove the viewport workaround (`ponytail:` note in `TerminalPanel.tsx`).
+

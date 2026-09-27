@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from pydantic import BaseModel
 from starlette.requests import HTTPConnection
 
-from core import config
+from core import __version__, config
 from core.persistence import db
 from core.agent.session import AgentSession, SESSIONS
 from core.agent.loop import AgentLoop
@@ -38,6 +38,9 @@ TOKEN = os.getenv("TERMICURSOR_TOKEN", "")
 # "null" is the origin of the packaged app's file:// page. Sandboxed iframes on any
 # site also send "null", so it's only allowed when the token is enforced.
 ALLOWED_ORIGINS = ["http://localhost:5180", "http://127.0.0.1:5180"] + (["null"] if TOKEN else [])
+# One explicit extra origin, e.g. the E2E harness's own Vite port (frontend/e2e/harness.mjs).
+if os.getenv("TERMICURSOR_EXTRA_ORIGIN"):
+    ALLOWED_ORIGINS.append(os.environ["TERMICURSOR_EXTRA_ORIGIN"])
 if not TOKEN:
     print("WARNING: TERMICURSOR_TOKEN is not set; API auth is off (dev mode). "
           "Only the Vite dev origin is accepted.")
@@ -123,7 +126,8 @@ async def ingest(request: IngestRequest):
 @app.get("/status")
 async def status():
     config.reload_settings()  # pick up Settings-page changes (model, Ollama URL)
-    return rag.get_ollama_status()
+    return {**rag.get_ollama_status(), "provider": config.LLM_PROVIDER,
+            "model": config.active_model(), "version": __version__}
 
 
 @app.post("/pull")

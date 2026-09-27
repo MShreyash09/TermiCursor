@@ -1,5 +1,6 @@
 from .base import Tool
-from .fs_tools import ReadFileTool, WriteFileTool, ListDirTool, DeleteFileTool
+from .fs_tools import ReadFileTool, WriteFileTool, EditFileTool, ListDirTool, DeleteFileTool
+from .grep_tools import GrepTool, FindFilesTool
 from .shell_tool import RunShellCommandTool
 from .search_tool import SearchCodebaseTool
 from .browser_tools import BrowserNavigateTool, BrowserClickTool, BrowserGetTextTool
@@ -12,13 +13,17 @@ def build_registry(project_path: str, session_id: str, video_dir: str) -> dict[s
     entire browser session there automatically (see browser_tools.py); the
     tools themselves never touch pixels, only extracted text/errors.
     """
+    # Order matters a little for small models: find/read tools first, then edits.
     tools: list[Tool] = [
-        ReadFileTool(),
-        WriteFileTool(),
+        GrepTool(),
+        FindFilesTool(),
         ListDirTool(),
+        ReadFileTool(),
+        SearchCodebaseTool(project_path),
+        EditFileTool(),
+        WriteFileTool(),
         DeleteFileTool(),
         RunShellCommandTool(),
-        SearchCodebaseTool(project_path),
         BrowserNavigateTool(session_id, video_dir),
         BrowserClickTool(session_id, video_dir),
         BrowserGetTextTool(session_id, video_dir),

@@ -30,10 +30,13 @@ from core.tools.base import Tool, ToolResult
 from core.tools.registry import build_registry, tools_schema_text
 from core.tools.browser_tools import close_browser_session
 from core.memory import project_memory
-from .json_protocol import parse_agent_output, ProtocolError, CORRECTION_MESSAGE
+import rag
+from .context import looks_project_specific, mentioned_files, wants_change
+from .json_protocol import AgentAction, parse_agent_output, ProtocolError, CORRECTION_MESSAGE
 from .llm_client import LLMClient
 from .planner import decompose_task
-from .prompts import EXECUTOR_SYSTEM_PROMPT, SIMPLE_EXECUTOR_SYSTEM_PROMPT
+from .prompts import (ASK_MODE_RULES, DO_THE_WORK_NUDGE, EXECUTOR_SYSTEM_PROMPT, LOOK_FIRST_NUDGE,
+                      SIMPLE_EXECUTOR_SYSTEM_PROMPT)
 from .router import classify_intent
 from .session import AgentSession, TaskStep
 from core.artifacts.store import ArtifactStore
@@ -43,8 +46,43 @@ from core.artifacts.store import ArtifactStore
 # exactly this; we detect it and push the model to finish instead. Note we do
 # NOT dedup run_shell_command — re-running a build/test command after an edit is
 # a legitimate, common pattern.
-_DEDUP_TOOLS = {"write_file", "delete_file"}
-READ_ONLY_TOOLS = {"read_file", "list_dir", "search_codebase"}
+_DEDUP_TOOLS = {"write_file", "edit_file", "delete_file"}
+READ_ONLY_TOOLS = {"read_file", "list_dir", "search_codebase", "grep", "find_files"}
+ATTACH_LINES = 100        # lines of each auto-attached file (the model can read_file for more)
+KEEP_FULL_RESULTS = 2     # older tool results get shortened so the context window doesn't overflow
+
+
+def _norm(path: str) -> str:
+    return os.path.normpath(path or ".").replace(os.sep, "/").lower()
+
+
+def _file_list(project_path: str) -> str:
+    """Project tree for the prompt, rooted at "./" (a folder-name root line made the
+    model pass the project's own name as a subfolder, e.g. cwd="my-app")."""
+    _, _, rest = rag.get_project_tree(project_path, max_depth=3, max_files=80).partition("\n")
+    return "./ (project root)\n" + rest
+
+
+def _erased_lines(abs_path: str, new_content: str) -> list[str]:
+    """Existing lines a whole-file write would drop, if that's most of the file.
+    Small models "add a function" by rewriting the file with only the new function."""
+    if not os.path.isfile(abs_path):
+        return []
+    try:
+        with open(abs_path, "r", encoding="utf-8", errors="replace") as f:
+            old = [ln.strip() for ln in f if ln.strip()]
+    except OSError:
+        return []
+    kept = {ln.strip() for ln in new_content.splitlines()}
+    lost = [ln for ln in old if ln not in kept]
+    return lost if len(old) >= 3 and len(lost) > len(old) * 0.3 else []
+
+
+def _shorten_old_results(messages: list[dict]) -> None:
+    results = [m for m in messages if m["role"] == "user" and m["content"].startswith("Tool result:")]
+    for m in results[:-KEEP_FULL_RESULTS]:
+        if len(m["content"]) > 700:
+            m["content"] = m["content"][:500] + "\n[... older result shortened to save context; read again if needed]"
 
 
 def _action_sig(action) -> str:
@@ -67,6 +105,9 @@ class AgentLoop:
         self.tools: dict[str, Tool] = build_registry(
             session.project_path, session.id, self.artifacts.dir
         )
+        # Files the agent has seen (read, attached, or written) this session. write_file
+        # over an existing file it hasn't seen is refused: that's how small models erase code.
+        self._known_files: set[str] = set()
         if session.agent == "ask":
             # Ask mode is read-only: it can look around the codebase but never change it.
             self.tools = {k: v for k, v in self.tools.items() if k in READ_ONLY_TOOLS}
@@ -231,10 +272,30 @@ class AgentLoop:
         template = SIMPLE_EXECUTOR_SYSTEM_PROMPT if simple else EXECUTOR_SYSTEM_PROMPT
         system = template.format(
             tools=tools_schema_text(self.tools), goal=s.goal, step=step.description,
-            memories=memories,
+            memories=memories, files=_file_list(s.project_path),
+            mode_rules=ASK_MODE_RULES if s.agent == "ask" else "",
         )
+
+        # Files named in the request are read up front, like an @-mention in Cursor, so
+        # the model starts from the real code instead of guessing from the file name.
+        attached: list[str] = []
+        for rel in mentioned_files(s.project_path, f"{step.description}\n{s.goal}"):
+            action = AgentAction(tool="read_file", args={"path": rel, "limit": ATTACH_LINES})
+            async for ev, r in self._execute_action(step, action):
+                if ev is not None:
+                    yield ev
+                if r is not None and r.success:
+                    attached.append(r.output)
+        intro = "Respond with one JSON object."
+        if attached:
+            intro = ("Files mentioned in the request (already read for you):\n\n"
+                     + "\n\n".join(attached) + "\n\n" + intro)
         messages = [{"role": "system", "content": system},
-                    {"role": "user", "content": "Respond with one JSON object."}]
+                    {"role": "user", "content": intro}]
+        tools_used = False
+        nudged = False
+        changed_files = False   # a write/edit/delete succeeded in this step
+        work_nudged = False
 
         done_writes: set[str] = set()   # signatures of write/delete calls that succeeded
         last_success_summary: str | None = None
@@ -263,6 +324,22 @@ class AgentLoop:
 
             # Step finished.
             if turn.action is None:
+                # Answered a question about the project without looking at anything:
+                # that's a guess. Push back once.
+                if (not tools_used and not attached and not nudged
+                        and looks_project_specific(step.description)):
+                    nudged = True
+                    messages.append({"role": "assistant", "content": _compact_turn(turn)})
+                    messages.append({"role": "user", "content": LOOK_FIRST_NUDGE})
+                    continue
+                # Asked to change code but nothing was changed: small models often just
+                # describe the fix, or claim "added it" without an edit. Push back once.
+                if (s.agent != "ask" and not changed_files and not work_nudged
+                        and wants_change(step.description)):
+                    work_nudged = True
+                    messages.append({"role": "assistant", "content": _compact_turn(turn)})
+                    messages.append({"role": "user", "content": DO_THE_WORK_NUDGE})
+                    continue
                 _finish(turn.final_answer)
                 yield {"type": "step_done", "step_id": step.id, "summary": turn.final_answer}
                 yield {"type": "task_update", "step_id": step.id, "status": step.status,
@@ -291,6 +368,7 @@ class AgentLoop:
                 continue
 
             # Tool call.
+            tools_used = True
             result = None
             async for ev, r in self._execute_action(step, turn.action):
                 if ev is not None:
@@ -300,14 +378,17 @@ class AgentLoop:
 
             if result is not None and result.success:
                 if turn.action.tool in _DEDUP_TOOLS:
+                    changed_files = True
                     done_writes.add(_action_sig(turn.action))
-                    last_success_summary = result.output or f"{turn.action.tool} completed."
+                    # First line only ("Edited calc.py: ..."): it may become the step's summary.
+                    last_success_summary = (result.output or f"{turn.action.tool} completed.").splitlines()[0]
 
             messages.append({"role": "assistant", "content": _compact_turn(turn)})
             messages.append({"role": "user",
                              "content": f"Tool result:\n{result.to_context_str() if result else '(no result)'}\n\n"
                                         "If the step's goal is now satisfied, respond with action=null "
                                         "and a final_answer. Do not repeat completed actions."})
+            _shorten_old_results(messages)
 
         # Ran out of iterations. If real work succeeded, count it done rather than
         # failing the whole run over a missing 'final_answer' from a small model.
@@ -358,6 +439,30 @@ class AgentLoop:
                    result)
             return
 
+        if action.tool == "write_file":
+            path = action.args.get("path", "")
+            if os.path.isfile(os.path.join(s.project_path, path)) and _norm(path) not in self._known_files:
+                result = ToolResult(success=False, error=(
+                    f"{path} already exists and you haven't read it. read_file it first, then change it with "
+                    "edit_file. write_file would replace the whole file and erase the rest of its code."))
+                yield ({"type": "tool_result", "step_id": step.id, "call_id": call_id,
+                        "tool": action.tool, "success": False, "output": result.to_context_str()},
+                       result)
+                return
+
+        if action.tool == "write_file":
+            erased = _erased_lines(os.path.join(s.project_path, action.args.get("path", "")),
+                                   action.args.get("content", ""))
+            if erased:
+                result = ToolResult(success=False, error=(
+                    f"Refused: this write_file would delete {len(erased)} existing lines of "
+                    f"{action.args.get('path')} (e.g. {erased[0]!r}). To add or change code in an existing file, "
+                    "use edit_file with the exact old text and the new text."))
+                yield ({"type": "tool_result", "step_id": step.id, "call_id": call_id,
+                        "tool": action.tool, "success": False, "output": result.to_context_str()},
+                       result)
+                return
+
         risk = trust_gate.classify_risk(action.tool, action.args, s.project_path)
         yield ({"type": "tool_call", "step_id": step.id, "call_id": call_id,
                 "tool": action.tool, "args": action.args, "risk": risk}, None)
@@ -379,6 +484,8 @@ class AgentLoop:
                 return
 
         result = await tool.run(validated, project_root=s.project_path)
+        if result.success and action.tool in ("read_file", "edit_file", "write_file"):
+            self._known_files.add(_norm(action.args.get("path", "")))
         db.insert_tool_call(s.id, step.id, action.tool, action.args,
                             result.success, result.output or result.error)
 
@@ -387,10 +494,10 @@ class AgentLoop:
             art = self.artifacts.save_command_log(
                 action.args.get("command", ""), result.output,
                 result.data.get("exit_code", -1))
-        elif action.tool in ("write_file", "delete_file") and result.success:
+        elif action.tool in ("write_file", "edit_file", "delete_file") and result.success:
             art = self.artifacts.save_file_change(
                 action.args.get("path", ""),
-                "write" if action.tool == "write_file" else "delete",
+                {"write_file": "write", "edit_file": "edit", "delete_file": "delete"}[action.tool],
                 result.data.get("bytes", 0))
         if art is not None:
             yield ({"type": "artifact_created", "artifact": art.model_dump()}, None)

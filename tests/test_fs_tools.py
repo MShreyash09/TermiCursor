@@ -21,7 +21,7 @@ def test_write_read_roundtrip():
     assert r.success, r.error
     assert os.path.isfile(os.path.join(d, "sub", "hello.py"))
     rr = _run(ReadFileTool().run(ReadFileArgs(path="sub/hello.py"), project_root=d))
-    assert rr.success and rr.output == "print(1)"
+    assert rr.success and rr.output == "sub/hello.py (1 lines):\n    1| print(1)"
 
 
 def test_write_escape_is_blocked():

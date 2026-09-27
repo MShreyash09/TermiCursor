@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# E2E screenshots (frontend/e2e/run-e2e.mjs)
+e2e/screenshots/
+.vite/

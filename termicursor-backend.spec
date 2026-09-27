@@ -1,12 +1,17 @@
 # -*- mode: python ; coding: utf-8 -*-
+from PyInstaller.utils.hooks import collect_all
+
+# Playwright's Python package ships a Node driver as data files; bundle it so the
+# browser tools work in the installed app (browsers themselves: see browser_tools.py).
+pw_datas, pw_binaries, pw_hiddenimports = collect_all('playwright')
 
 
 a = Analysis(
     ['server.py'],
     pathex=[],
-    binaries=[],
-    datas=[],
-    hiddenimports=['uvicorn', 'langchain_ollama', 'qdrant_client'],
+    binaries=pw_binaries,
+    datas=pw_datas,
+    hiddenimports=['uvicorn', 'aiohttp', 'langchain_ollama', 'qdrant_client'] + pw_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

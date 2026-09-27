@@ -1,42 +1,50 @@
-# TermiCursor - Local, Offline Codebase AI Assistant
+# TermiCursor - Local Agentic Coding Assistant
 
-TermiCursor is an fully offline, GUI based AI assistant designed to run Retrieval-Augmented Generation (RAG) over local codebases using local models. It guarantees complete privacy by processing all code files, embeddings, and inference locally on your PC.
+TermiCursor is a GUI-based AI coding **agent** that runs on local models. Give it a
+goal: it plans the work (for anything non-trivial), then edits files, searches your
+codebase, and runs shell commands to accomplish it. It asks for your approval before
+running commands and streams its plan, thoughts and results live. Three modes: **Ask**
+(answers questions, read-only), **Plan** (you review the plan before any code is
+written) and **Build** (plans if needed, then codes). With the default Ollama setup,
+your code, embeddings and inference stay on your PC.
+
+## 🚀 Download
+
+**[Download the latest Windows installer](https://github.com/MShreyash09/TermiCursor/releases/latest)**
+
+1. Install [Ollama](https://ollama.com/download) and make sure it's running.
+2. Install and open TermiCursor. The status bar shows **Ollama Ready** once it can reach Ollama.
+3. If it shows **Models Missing**, click **Install Now**. The default models
+   (`qwen2.5-coder:3b` and `nomic-embed-text`) are about 2.2 GB in total.
+4. Open a project folder and give the agent a task.
+
+Requirements: Windows 10/11 and 8 GB RAM recommended. The browser tools use the Microsoft Edge that
+comes with Windows.
+
+### What goes over the network
+- Checking GitHub for TermiCursor updates.
+- Downloading models through Ollama (only when you click Install).
+- Web pages the agent opens with its browser tools.
+- **Groq (optional):** if you choose Groq as the LLM provider in Settings, your prompts and
+  the code the agent reads are sent to Groq's cloud API.
+
+### Safety
+- The agent asks before **every** shell command and before deleting files or writing outside
+  the project. Settings → *Auto-approve shell commands* skips the prompt, except for destructive
+  commands (`rm`, `del`, `git reset --hard`…), which always ask.
+- The app's local backend only accepts requests carrying a secret generated at each launch,
+  so other programs and web pages can't drive the agent.
+- Logs for bug reports: `%APPDATA%\Termicursor\logs\main.log`. See [SECURITY.md](SECURITY.md)
+  to report a vulnerability.
 
 ---
 
 ##  Architecture Overview
 
-TermiCursor divides operations into two distinct workflows: **Ingestion** (populating the vector database) and **Querying** (retrieval-augmented generation).
-
-```mermaid
-graph TD
-    %% Styling
-    classDef main fill:#2E3440,stroke:#88C0D0,stroke-width:2px,color:#ECEFF4;
-    classDef db fill:#3B4252,stroke:#A3BE8C,stroke-width:2px,color:#ECEFF4;
-    classDef model fill:#3B4252,stroke:#B48EAD,stroke-width:2px,color:#ECEFF4;
-    classDef phase fill:#434C5E,stroke:#EBCB8B,stroke-width:1px,stroke-dasharray: 5 5,color:#ECEFF4;
-
-    subgraph IngestPhase [" Ingestion Phase (python main.py ingest)"]
-        A[Codebase Files] -->|GenericLoader| B[LanguageParser]
-        B -->|Python, JS, TS| C[RecursiveCharacterTextSplitter<br/><i>Language-Aware Splitters</i>]
-        C -->|Syntactic Chunks| D[OllamaEmbeddings<br/><i>nomic-embed-text</i>]
-        D -->|Vector Embeddings| E[(Local Qdrant DB<br/><i>Path-Hashed Collections</i>)]
-    end
-
-    subgraph QueryPhase [" Query Phase (python main.py chat / query)"]
-        UserQuery[User Query] -->|Ollama Pre-Checks| F[Qdrant Retriever]
-        E -->|Semantic Search| F
-        F -->|Top-k Code Context| G[Prompt Assembly]
-        G -->|System Persona Context| H[Ollama LLM<br/><i>qwen2.5-coder:3b</i>]
-        H -->|Streaming Output| Response[Console Response]
-    end
-
-    %% Apply Styles
-    class A,B,C,F,G,Response main;
-    class E db;
-    class D,H model;
-    class IngestPhase,QueryPhase phase;
-```
+TermiCursor divides operations into two workflows: **Ingestion** (populating the vector
+database) and the **Agent Loop** (routing, planning, and tool-calling execution). All
+agent code lives in `core/` (`core/agent`, `core/tools`, `core/memory`,
+`core/persistence`, `core/artifacts`); `rag.py` is now retrieval-only.
 
 ### 1. Ingestion Phase (`ingest`)
 1. **File Scanning:** Uses `GenericLoader` from LangChain to scan code files matching `.py`, `.js`, `.jsx`, `.ts`, and `.tsx`.
@@ -44,17 +52,36 @@ graph TD
 3. **Language-Aware Splitting:** Documents are grouped by language, and chunked using syntax-specific token splitting rules (`RecursiveCharacterTextSplitter.from_language`) to ensure functions, class signatures, and control structures remain cohesive.
 4. **Vector Database Storage:** Semantic text embeddings are generated using Ollama's `nomic-embed-text` model and indexed into local Qdrant collections.
 
-### 2. Query Phase (`chat` or `query`)
-1. **Local Model Pre-Check:** Validates that Ollama is online and all models (`nomic-embed-text` and `qwen2.5-coder:3b`) are fully pulled before initializing.
-2. **Path-Hashed DB Isolation:** Automatically hashes the absolute project directory to resolve and load a unique, project-specific database collection. This guarantees absolute workspace isolation (no collisions).
-3. **Retrieval:** Uses Qdrant's vector search to retrieve the top-3 most semantically similar codebase chunks corresponding to the user's question.
-4. **LLM Generation:** Combines the prompt, retrieved code chunks, and system persona instructions, passing them to the local `qwen2.5-coder:3b` model to generate clean, highly precise answers.
+### 2. Agent Loop (`core/agent/loop.py`)
+1. **Route:** `core/agent/router.py` classifies the goal as `simple` (question/lookup —
+   answered directly, no planning) or `complex` (build/change task — planned first).
+   Heuristics resolve most cases with zero LLM calls.
+2. **Plan (complex only):** decomposes the goal into an ordered task list.
+3. **Execute:** each step runs a bounded ReAct loop — the model emits one JSON
+   tool-call per turn (`read_file`, `write_file`, `list_dir`, `delete_file`,
+   `run_shell_command`, `search_codebase`, `browser_navigate`, `browser_click`,
+   `browser_get_text`), validated against a schema, executed, and fed back —
+   until it returns a final answer.
+4. **Trust gate:** destructive shell commands, deletes, and out-of-project writes pause
+   for your approval before running.
+5. **Stream + stop:** every step streams live over `WS /ws/agent/{session_id}`; a
+   running agent can be stopped at any time (`POST /sessions/{id}/cancel`).
+6. **Browser verification (text-only, no vision):** qwen2.5-coder:3b can't see
+   images, so `browser_navigate`/`browser_click`/`browser_get_text` give it back
+   extracted page text and console/network errors — never pixels — to verify a
+   web app it built. Separately, and purely for you, the **entire browser
+   session is recorded to video** automatically (`core/tools/browser_tools.py`)
+   and shows up in the Artifact Trail as a `.webm` you can open and watch — the
+   model never sees it, it's not fed back into the loop, it's just proof of
+   what happened.
+
+See [`core/`](core) for the implementation and the frontend's `AgentPanel` for the UI.
 
 ---
 
 ##  Features
 
-*   **Complete Privacy:** 100% offline. No code or metadata leaves your host machine.
+*   **Private by Default:** With Ollama, code, embeddings and inference stay on your machine (see *What goes over the network* above).
 *   **Syntax-Aware Parsing:** Code-aware chunking ensures logical components (functions, classes) are kept intact.
 *   **Database Workspace Isolation:** Every project folder receives a unique path-hashed Qdrant collection to completely avoid data mix-ups.
 *   **Proactive Checks:** Validates model availability and connectivity to prevent standard connection tracebacks.
@@ -62,41 +89,56 @@ graph TD
 
 ---
 
-##  How to Run
+##  Development
 
 ### Command Options
-Ensure you are using the virtual environment containing the dependencies (`langchain`, `qdrant-client`, `langchain-ollama`).
+Requires Python 3.10+ (releases are built with 3.13) and Node 22. Dependencies are pinned in `requirements.txt`.
 
 ```powershell
 # 1. Create a venv
 python -m venv .venv
 
 # 2. Activate the virtual environment
+.venv\Scripts\activate
 
 # 3. Install requirement file
-pip install requirements.txt
+pip install -r requirements.txt
+
+# 3b. One-time: install the Chromium binary the browser tools drive
+python -m playwright install chromium
 
 # 4. Install frontend files
-cd termicursor-ui
+cd frontend
 npm install
 
-# 5. Open 2 terminal and navigate one to backend & frontend
-cd termicursor-ui
+# 5. Open 2 terminals: one for frontend, one for backend
+cd frontend
 npm run dev
 
-# Open another terminal and run 
-cd Cursor
+# Open another terminal and run
 uvicorn server:app --reload
 
-# 5. Ingest (Index) the current directory codebase
+# 6. Ingest (Index) the current directory codebase
 python main.py ingest .
 
-# 6. Ask a single-shot question
-python main.py query . "Explain the validate_ollama_status function."
+# 7. Run the agent on a goal (headless CLI; anything needing approval is auto-denied,
+#    including shell commands unless "autoApproveShell": true is in settings.json)
+python main.py run . "Create a Flask hello-world app and run it"
 
-# 7. Launch the interactive prompt session
-python main.py chat .
+# 8. Interactive terminal UI (asks you before running commands)
+python cli.py
+
+# Tests (offline; tests/live_* need a running Ollama)
+python -m pytest -q tests --ignore-glob="tests/live_*"
 ```
-<!-- 
-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 
--->
+
+In dev, the backend runs without the per-launch token (only the packaged app sets
+`TERMICURSOR_TOKEN`); it still rejects requests from any origin except the Vite dev server.
+
+The GUI (`npm run dev` in `frontend/`) is the primary way to use the agent — it shows
+the live plan, tool calls, approval prompts, and artifacts, and lets you stop a run
+mid-flight.
+
+## License
+
+[MIT](LICENSE)

@@ -4,17 +4,25 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>TermiCursor — Local, Offline AI Code Assistant</title>
+  <title>TermiCursor · The coding agent that runs on your machine</title>
   <meta name="description"
-    content="TermiCursor is a fully offline, privacy-first AI code assistant that runs RAG over your local codebase. No cloud. No telemetry. Your code stays yours." />
+    content="TermiCursor plans, edits files, runs commands and checks its work using local models through Ollama. It asks before anything risky, and your code stays on your PC. Free and open source." />
+  <meta property="og:title" content="TermiCursor · The coding agent that runs on your machine" />
+  <meta property="og:description"
+    content="A local AI coding agent with Ask, Plan and Build modes. Runs on Ollama. Free and open source (MIT)." />
+  <meta name="theme-color" content="#000000" />
+  <link rel="icon"
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23000'/%3E%3Cpath d='M8 10l6 6-6 6' fill='none' stroke='%2339ff14' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3Crect x='16' y='20' width='9' height='3' rx='1' fill='%23fff'/%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
-    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700;800&display=swap"
     rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
+  <!-- Set before first paint so .reveal elements don't flash -->
+  <script>document.documentElement.classList.add('js');</script>
 
-  <!-- Vercel Web Analytics -->
+  <!-- Vercel Web Analytics (website only; the app itself has no telemetry) -->
   <script>
     window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
   </script>
@@ -22,403 +30,391 @@
 </head>
 
 <body>
-  <!-- ═══════════════ NAVIGATION ═══════════════ -->
-  <nav id="navbar">
-    <div class="nav-inner">
-      <a href="#" class="logo">
-        <span class="logo-icon">⌘</span>
-        <span class="logo-text">Termi<span class="accent">Cursor</span></span>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <!-- ═══════════ NAV ═══════════ -->
+  <nav class="nav" id="nav" aria-label="Main">
+    <div class="container nav-inner">
+      <a href="#" class="brand" aria-label="TermiCursor home">
+        <span class="brand-termi">termi</span><span class="brand-cursor">cursor</span><span class="caret" aria-hidden="true"></span>
       </a>
-      <ul class="nav-links">
-        <li><a href="#features">Features</a></li>
-        <li><a href="#architecture">Architecture</a></li>
-        <li><a href="#privacy">Privacy</a></li>
-        <li><a href="#download" class="nav-cta">Download</a></li>
-      </ul>
-      <button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Toggle menu">
-        <span></span><span></span><span></span>
+      <div class="nav-links" id="navLinks">
+        <a href="#modes">Modes</a>
+        <a href="#features">Features</a>
+        <a href="#how">How it works</a>
+        <a href="#privacy">Privacy</a>
+        <a href="#faq">FAQ</a>
+        <a href="https://github.com/MShreyash09/TermiCursor" class="nav-github" target="_blank" rel="noopener">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12 .5a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2.2c-3.3.7-4-1.4-4-1.4-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17.3 4.7 18.3 5 18.3 5c.7 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.7-2.8 5.7-5.5 6 .4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .5z" />
+          </svg>
+          GitHub
+        </a>
+        <a href="https://github.com/MShreyash09/TermiCursor/releases/latest" class="btn btn-primary btn-sm"
+          data-track="download">Download</a>
+      </div>
+      <button class="menu-btn" id="menuBtn" aria-label="Open menu" aria-expanded="false" aria-controls="navLinks">
+        <span></span><span></span>
       </button>
     </div>
   </nav>
 
-  <!-- ═══════════════ HERO ═══════════════ -->
-  <header id="hero">
-    <div class="hero-bg-grid"></div>
-    <div class="hero-glow hero-glow-1"></div>
-    <div class="hero-glow hero-glow-2"></div>
-
-    <div class="hero-content">
-      <div class="hero-badge">
-        <span class="badge-dot"></span>
-        100% Offline &bull; Zero Telemetry &bull; Open Source
-      </div>
-      <h1>Your Code.<br /><span class="gradient-text">Your AI.</span><br />Your Machine.</h1>
-      <p class="hero-sub">
-        TermiCursor is a fully offline AI code assistant that runs Retrieval-Augmented Generation
-        locally over your codebase. No cloud APIs. No data leaves your PC. Ever.
-      </p>
-      <div class="hero-actions">
-        <a href="https://github.com/MShreyash09/TermiCursor/releases/download/v0.0.0/Termicursor.Setup.0.0.0.exe" class="btn btn-primary" id="downloadBtn">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="7 10 12 15 17 10" />
-            <line x1="12" y1="15" x2="12" y2="3" />
-          </svg>
-          Download for Windows
-        </a>
-        <a href="#features" class="btn btn-ghost">
-          Learn More
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <path d="M7 17l9.2-9.2M17 17V8h-9" />
-          </svg>
-        </a>
-      </div>
-      <p class="hero-meta">Windows 10/11 &bull; ~160 MB &bull; Requires <a href="https://ollama.com" target="_blank"
-          rel="noopener">Ollama</a></p>
-    </div>
-
-    <div class="hero-visual">
-      <div class="browser-frame">
-        <div class="browser-dots">
-          <span></span><span></span><span></span>
-        </div>
-        <img src="image.png" alt="TermiCursor IDE Screenshot" class="hero-img" />
-      </div>
-    </div>
-  </header>
-
-  <!-- ═══════════════ LOGO CLOUD ═══════════════ -->
-  <section class="logo-cloud">
-    <p>Powered by</p>
-    <div class="logo-strip">
-      <span class="tech-chip">🦙 Ollama</span>
-      <span class="tech-chip">🔗 LangChain</span>
-      <span class="tech-chip">🧠 Qdrant</span>
-      <span class="tech-chip">⚛️ React</span>
-      <span class="tech-chip">⚡ FastAPI</span>
-      <span class="tech-chip">🖥️ Electron</span>
-    </div>
-  </section>
-
-  <!-- ═══════════════ FEATURES ═══════════════ -->
-  <section id="features">
-    <div class="section-header">
-      <span class="section-tag">Features</span>
-      <h2>Everything you need.<br /><span class="gradient-text">Nothing you don't.</span></h2>
-      <p>Built for developers who value privacy, speed, and control over their toolchain.</p>
-    </div>
-
-    <div class="features-grid">
-      <div class="feature-card feature-card-large">
-        <div class="feature-icon icon-ai">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
-            stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2a4 4 0 0 1 4 4v1a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z" />
-            <path d="M16 14v1a4 4 0 0 1-8 0v-1" />
-            <circle cx="12" cy="20" r="2" />
-            <path d="M12 17v1" />
-            <path d="M3 12h1m16 0h1M5.6 5.6l.7.7m11.4-.7-.7.7" />
-          </svg>
-        </div>
-        <h3>AI-Powered RAG</h3>
-        <p>Ask questions about your entire codebase. TermiCursor chunks, embeds, and retrieves the most relevant code
-          snippets using semantic vector search, then feeds them to a local LLM for precise answers.</p>
-        <div class="feature-code">
-          <pre><code><span class="code-comment">// Ask anything about your codebase</span>
-<span class="code-prompt">❯</span> How does the authentication middleware work?
-
-<span class="code-ai">🤖</span> Based on <span class="code-file">auth.py:42-78</span>, the middleware uses
-   JWT tokens validated against a local RSA key pair...
-</code></pre>
-        </div>
-      </div>
-
-      <div class="feature-card">
-        <div class="feature-icon icon-privacy">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
-            stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-          </svg>
-        </div>
-        <h3>Total Privacy</h3>
-        <p>Zero cloud. Zero telemetry. Every model runs on your machine. Your source code never touches the internet.
-        </p>
-      </div>
-
-      <div class="feature-card">
-        <div class="feature-icon icon-models">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
-            stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" />
-            <path d="M12 12l8-4.5" />
-            <path d="M12 12v9" />
-            <path d="M12 12L4 7.5" />
-          </svg>
-        </div>
-        <h3>Flexible Models</h3>
-        <p>Choose your LLM — Qwen, LLaMA, Mistral via Ollama, or use cloud Groq. Switch anytime from Settings.</p>
-      </div>
-
-      <div class="feature-card">
-        <div class="feature-icon icon-code">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
-            stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="16 18 22 12 16 6" />
-            <polyline points="8 6 2 12 8 18" />
-          </svg>
-        </div>
-        <h3>Syntax-Aware Parsing</h3>
-        <p>Code is chunked using language-specific AST splitters for Python, JavaScript, and TypeScript — keeping
-          functions and classes intact.</p>
-      </div>
-
-      <div class="feature-card">
-        <div class="feature-icon icon-memory">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
-            stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" />
-            <path d="M12 6v6l4 2" />
-          </svg>
-        </div>
-        <h3>Persistent Memory</h3>
-        <p>Powered by Mem0 — TermiCursor remembers your preferences, coding patterns, and prior context across sessions.
-        </p>
-      </div>
-
-      <div class="feature-card">
-        <div class="feature-icon icon-file">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
-            stroke-linecap="round" stroke-linejoin="round">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-            <polyline points="14 2 14 8 20 8" />
-            <line x1="12" y1="18" x2="12" y2="12" />
-            <line x1="9" y1="15" x2="15" y2="15" />
-          </svg>
-        </div>
-        <h3>File Operations</h3>
-        <p>Ask the AI to create, edit, or delete files directly in your project. It writes code and saves it for you
-          automatically.</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══════════════ ARCHITECTURE ═══════════════ -->
-  <section id="architecture">
-    <div class="section-header">
-      <span class="section-tag">How It Works</span>
-      <h2>Two-phase <span class="gradient-text">intelligence pipeline</span></h2>
-      <p>TermiCursor first indexes your codebase into a local vector database, then uses it for intelligent retrieval.
-      </p>
-    </div>
-
-    <div class="arch-pipeline">
-      <div class="arch-phase">
-        <div class="phase-label">Phase 1 — Ingestion</div>
-        <div class="arch-steps">
-          <div class="arch-step">
-            <div class="step-num">01</div>
-            <div class="step-content">
-              <h4>Scan</h4>
-              <p>Recursively finds .py, .js, .ts, .tsx, .jsx files in your project</p>
-            </div>
-          </div>
-          <div class="arch-arrow">→</div>
-          <div class="arch-step">
-            <div class="step-num">02</div>
-            <div class="step-content">
-              <h4>Parse</h4>
-              <p>Language-aware chunking preserves functions and class boundaries</p>
-            </div>
-          </div>
-          <div class="arch-arrow">→</div>
-          <div class="arch-step">
-            <div class="step-num">03</div>
-            <div class="step-content">
-              <h4>Embed</h4>
-              <p>nomic-embed-text generates semantic vectors for each chunk</p>
-            </div>
-          </div>
-          <div class="arch-arrow">→</div>
-          <div class="arch-step">
-            <div class="step-num">04</div>
-            <div class="step-content">
-              <h4>Store</h4>
-              <p>Vectors indexed in a local, path-isolated Qdrant collection</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="arch-phase">
-        <div class="phase-label">Phase 2 — Query</div>
-        <div class="arch-steps">
-          <div class="arch-step">
-            <div class="step-num">01</div>
-            <div class="step-content">
-              <h4>Question</h4>
-              <p>Type your question in the integrated chat panel</p>
-            </div>
-          </div>
-          <div class="arch-arrow">→</div>
-          <div class="arch-step">
-            <div class="step-num">02</div>
-            <div class="step-content">
-              <h4>Retrieve</h4>
-              <p>Top-k most semantically relevant code chunks are fetched</p>
-            </div>
-          </div>
-          <div class="arch-arrow">→</div>
-          <div class="arch-step">
-            <div class="step-num">03</div>
-            <div class="step-content">
-              <h4>Augment</h4>
-              <p>Code context + memory + system persona assembled into prompt</p>
-            </div>
-          </div>
-          <div class="arch-arrow">→</div>
-          <div class="arch-step">
-            <div class="step-num">04</div>
-            <div class="step-content">
-              <h4>Generate</h4>
-              <p>Local LLM streams a precise, context-aware answer</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══════════════ PRIVACY ═══════════════ -->
-  <section id="privacy">
-    <div class="privacy-card">
-      <div class="privacy-left">
-        <span class="section-tag">Privacy Promise</span>
-        <h2>Your code <span class="gradient-text">never</span> leaves your machine</h2>
-        <p>Unlike cloud-based coding assistants, TermiCursor processes everything locally. No API calls to external
-          servers. No telemetry. No analytics. The vector database, embeddings, and LLM inference all happen on your
-          hardware.</p>
-        <div class="privacy-checks">
-          <div class="check-item"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4ecdc4"
-              stroke-width="2.5">
-              <polyline points="20 6 9 17 4 12" />
-            </svg> No cloud API calls</div>
-          <div class="check-item"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4ecdc4"
-              stroke-width="2.5">
-              <polyline points="20 6 9 17 4 12" />
-            </svg> No telemetry or analytics</div>
-          <div class="check-item"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4ecdc4"
-              stroke-width="2.5">
-              <polyline points="20 6 9 17 4 12" />
-            </svg> All models run locally via Ollama</div>
-          <div class="check-item"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4ecdc4"
-              stroke-width="2.5">
-              <polyline points="20 6 9 17 4 12" />
-            </svg> Vector database stored on your disk</div>
-          <div class="check-item"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4ecdc4"
-              stroke-width="2.5">
-              <polyline points="20 6 9 17 4 12" />
-            </svg> Optional cloud fallback (Groq) — your choice</div>
-        </div>
-      </div>
-      <div class="privacy-right">
-        <div class="privacy-visual">
-          <div class="shield">
-            <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="url(#shield-grad)" stroke-width="1.2"
-              stroke-linecap="round" stroke-linejoin="round">
-              <defs>
-                <linearGradient id="shield-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stop-color="#4ecdc4" />
-                  <stop offset="100%" stop-color="#2b6b69" />
-                </linearGradient>
-              </defs>
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-            </svg>
-          </div>
-          <div class="orbit-ring orbit-1">
-            <div class="orbit-dot"></div>
-          </div>
-          <div class="orbit-ring orbit-2">
-            <div class="orbit-dot"></div>
-          </div>
-          <div class="orbit-ring orbit-3">
-            <div class="orbit-dot"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══════════════ DOWNLOAD CTA ═══════════════ -->
-  <section id="download">
-    <div class="download-card">
-      <h2>Ready to take your code <span class="gradient-text">offline</span>?</h2>
-      <p>Download TermiCursor, install Ollama, and start asking questions about your codebase in minutes.</p>
-      <div class="download-actions">
-        <a href="https://github.com/MShreyash09/TermiCursor/releases/download/v0.0.0/Termicursor.Setup.0.0.0.exe" class="btn btn-primary btn-large">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="7 10 12 15 17 10" />
-            <line x1="12" y1="15" x2="12" y2="3" />
-          </svg>
-          Download TermiCursor
-        </a>
-        <a href="https://ollama.com" target="_blank" rel="noopener" class="btn btn-ghost">
-          Get Ollama
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-            <polyline points="15 3 21 3 21 9" />
-            <line x1="10" y1="14" x2="21" y2="3" />
-          </svg>
-        </a>
-      </div>
-      <div class="download-requirements">
-        <div class="req"><span>📦</span> Windows 10/11 (x64)</div>
-        <div class="req"><span>🧠</span> 8 GB+ RAM recommended</div>
-        <div class="req"><span>🦙</span> Ollama installed separately</div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══════════════ FOOTER ═══════════════ -->
-  <footer>
-    <div class="footer-inner">
-      <div class="footer-brand">
-        <a href="#" class="logo">
-          <span class="logo-icon">⌘</span>
-          <span class="logo-text">Termi<span class="accent">Cursor</span></span>
-        </a>
-        <p>Local, offline AI for your codebase.</p>
-      </div>
-      <div class="footer-links">
-        <div class="footer-col">
-          <h4>Product</h4>
-          <a href="#features">Features</a>
-          <a href="#architecture">Architecture</a>
-          <a href="#download">Download</a>
-        </div>
-        <div class="footer-col">
-          <h4>Resources</h4>
-          <a href="https://ollama.com" target="_blank" rel="noopener">Ollama</a>
-          <a href="https://github.com" target="_blank" rel="noopener">GitHub</a>
-        </div>
-        <div class="footer-col">
-          <h4>Contact</h4>
-          <a href="https://mail.google.com/mail/?view=cm&fs=1&to=shreyashmandlapure09@gmail.com" target="_blank"
-            rel="noopener noreferrer"
-            className="inline-block text-center px-7 py-3.5 bg-foreground text-background rounded-full font-semibold tracking-wide hover:scale-105 hover:shadow-2xl transition-all duration-300">
-            Get in Touch
+  <main id="main">
+    <!-- ═══════════ HERO ═══════════ -->
+    <header class="hero">
+      <div class="hero-grid-bg" aria-hidden="true"></div>
+      <div class="container hero-inner">
+        <div class="hero-copy">
+          <a class="pill" href="https://github.com/MShreyash09/TermiCursor/releases/latest">
+            <span class="pill-dot"></span> v0.1 &middot; Free &amp; open source (MIT)
           </a>
+          <h1>The coding agent that runs on <span class="hl">your machine</span><span class="caret caret-lg" aria-hidden="true"></span></h1>
+          <p class="lede">
+            TermiCursor plans the work, edits files, runs commands and checks the result, powered by
+            local models through Ollama. It asks before anything risky, and your code stays on your PC.
+          </p>
+          <div class="cta-row">
+            <a href="https://github.com/MShreyash09/TermiCursor/releases/latest" class="btn btn-primary"
+              data-track="download">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              Download for Windows
+            </a>
+            <a href="https://github.com/MShreyash09/TermiCursor" class="btn btn-ghost" target="_blank" rel="noopener">
+              View source
+            </a>
+          </div>
+          <div class="install">
+            <span class="install-label">Prefer the terminal?</span>
+            <div class="install-cmd">
+              <code id="pipCmd">pip install git+https://github.com/MShreyash09/TermiCursor.git</code>
+              <button class="copy-btn" data-copy="#pipCmd" aria-label="Copy install command">Copy</button>
+            </div>
+          </div>
+          <p class="meta">Windows 10/11 &middot; Needs <a href="https://ollama.com/download" target="_blank"
+              rel="noopener">Ollama</a> &middot; About 2.2 GB of models on first run</p>
+        </div>
+
+        <figure class="hero-shot">
+          <div class="glow" aria-hidden="true"></div>
+          <img src="asset/cli-welcome.png" width="2560" height="738"
+            alt="The TermiCursor terminal app: block-letter logo, key hints and a tip on a black background" />
+        </figure>
+      </div>
+    </header>
+
+    <!-- ═══════════ MODES ═══════════ -->
+    <section id="modes" class="section">
+      <div class="container">
+        <div class="section-head">
+          <span class="eyebrow">Three modes</span>
+          <h2>You decide how much it does.</h2>
+          <p>Press <kbd>tab</kbd> in the terminal, or use the switch in the app.</p>
+        </div>
+
+        <div class="modes">
+          <article class="mode mode-ask reveal">
+            <div class="mode-chip"><b>Ask</b> &middot; read-only</div>
+            <h3>Ask about your code</h3>
+            <p>Questions get direct answers. It can open files and search the index, but it can't edit
+              anything or run commands.</p>
+          </article>
+          <article class="mode mode-plan reveal">
+            <div class="mode-chip"><b>Plan</b> &middot; you review first</div>
+            <h3>See the plan before any code</h3>
+            <p>It writes a step-by-step plan and stops. Edit the steps, ask for changes, or approve it. Only then
+              does it start coding.</p>
+          </article>
+          <article class="mode mode-build reveal">
+            <div class="mode-chip"><b>Build</b> &middot; gets it done</div>
+            <h3>Hand it the whole task</h3>
+            <p>It plans when the task needs it, then edits files, runs your tests and checks the result, asking
+              before anything risky.</p>
+          </article>
+        </div>
+
+        <div class="spotlight reveal">
+          <div class="spotlight-copy">
+            <div class="sc-head">
+              <span class="eyebrow eyebrow-plan">Plan mode</span>
+              <h3>Nothing gets written until you say so.</h3>
+            </div>
+            <div class="sc-body">
+            <p>A plan you can change is better than a diff you have to undo. Remove steps, add steps, or type
+              "use pytest, not unittest" and it plans again.</p>
+            <ul class="ticks">
+              <li>Edit, add or remove steps</li>
+              <li>Ask for changes as many times as you like</li>
+              <li>Approve and it starts coding, or reject and nothing happens</li>
+            </ul>
+            </div>
+          </div>
+          <figure class="shot">
+            <img src="asset/cli-plan.png" width="2560" height="634" loading="lazy" alt="A plan in TermiCursor's terminal app, shown for review before coding"
+              onerror="this.parentElement.classList.add('shot-missing')" />
+            <figcaption>Screenshot coming soon</figcaption>
+          </figure>
+        </div>
+
+        <div class="spotlight reveal">
+          <div class="spotlight-copy">
+            <div class="sc-head">
+              <span class="eyebrow eyebrow-ask">Ask mode</span>
+              <h3>Ask about your project.</h3>
+            </div>
+            <div class="sc-body">
+            <p>It can open files and search a local index of your project before it answers, and every file it
+              opens shows up as it happens. Ask mode only has read-only tools, so a question can't turn into an
+              edit.</p>
+            <ul class="ticks">
+              <li>Tool calls shown as they happen</li>
+              <li>Read-only: it can't edit files or run commands</li>
+              <li>No planning step, so answers come back fast</li>
+            </ul>
+            </div>
+          </div>
+          <figure class="shot">
+            <img src="asset/cli-ask.png" width="2560" height="580" loading="lazy" alt="TermiCursor in Ask mode listing a folder with the list_dir tool, then answering"
+              onerror="this.parentElement.classList.add('shot-missing')" />
+            <figcaption>Screenshot coming soon</figcaption>
+          </figure>
         </div>
       </div>
+    </section>
+
+    <!-- ═══════════ FEATURES ═══════════ -->
+    <section id="features" class="section section-alt">
+      <div class="container">
+        <div class="section-head">
+          <span class="eyebrow">Features</span>
+          <h2>An agent, not autocomplete.</h2>
+          <p>It works through a task one tool call at a time, and you can watch every step.</p>
+        </div>
+
+        <div class="bento">
+          <article class="card card-wide reveal">
+            <div class="icon icon-green" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
+            </div>
+            <h3>Knows your codebase</h3>
+            <p>When you open a folder, it indexes the project on your machine: language-aware chunks, local
+              embeddings, and a vector store on disk. The agent can search it by meaning to find the right files.</p>
+            <div class="term-lines" aria-hidden="true">
+              <span><i class="c-orange">⚙</i> <b>search_codebase</b> <em>query=auth middleware</em></span>
+              <span><i class="c-orange">⚙</i> <b>read_file</b> <em>path=server/auth.py</em></span>
+              <span><i class="c-green">┃ done</i> <em>4.2s</em></span>
+            </div>
+          </article>
+          <article class="card reveal">
+            <div class="icon icon-orange" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M4 17l6-6-6-6" /><path d="M12 19h8" /></svg>
+            </div>
+            <h3>Checks its own work</h3>
+            <p>Runs your builds and tests, reads the output, and fixes what failed.</p>
+          </article>
+          <article class="card reveal">
+            <div class="icon icon-red" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="M9 12l2 2 4-4" /></svg>
+            </div>
+            <h3>Asks before risky steps</h3>
+            <p>Every shell command asks first. So do deletes and writes outside the project.</p>
+          </article>
+          <article class="card reveal">
+            <div class="icon icon-blue" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2" /><path d="M3 9h18" /><path d="M8 21h8" /></svg>
+            </div>
+            <h3>Tests web apps in a browser</h3>
+            <p>Opens your app in Edge, reads the page and console errors, and records a video of the whole
+              session for you to watch.</p>
+          </article>
+          <article class="card reveal">
+            <div class="icon icon-purple" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 8v4l3 2" /><circle cx="12" cy="12" r="9" /></svg>
+            </div>
+            <h3>Remembers each project</h3>
+            <p>Reopen a folder and it knows what earlier sessions did there, so it picks up where you left off.</p>
+          </article>
+          <article class="card reveal">
+            <div class="icon icon-white" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" /><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5" /></svg>
+            </div>
+            <h3>Your models</h3>
+            <p>Any Ollama model, switchable in Settings. Groq is there if you want cloud speed, and it's off
+              unless you turn it on.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════ HOW IT WORKS ═══════════ -->
+    <section id="how" class="section">
+      <div class="container">
+        <div class="section-head">
+          <span class="eyebrow">How it works</span>
+          <h2>From a sentence to a finished change.</h2>
+        </div>
+        <ol class="steps">
+          <li class="step reveal">
+            <span class="step-n">01</span>
+            <h3>Understand</h3>
+            <p>Is this a question or a task? Questions get answered right away.</p>
+          </li>
+          <li class="step reveal">
+            <span class="step-n">02</span>
+            <h3>Plan</h3>
+            <p>Bigger tasks become a short list of steps. In Plan mode, you review it first.</p>
+          </li>
+          <li class="step reveal">
+            <span class="step-n">03</span>
+            <h3>Act</h3>
+            <p>One tool call at a time: read, write, search, run a command, open a page.</p>
+          </li>
+          <li class="step reveal">
+            <span class="step-n">04</span>
+            <h3>Verify</h3>
+            <p>It checks the result and leaves a trail: command logs, changed files, browser recordings.</p>
+          </li>
+        </ol>
+
+        <div class="spotlight reveal">
+          <div class="spotlight-copy">
+            <div class="sc-head">
+              <span class="eyebrow eyebrow-build">Desktop app</span>
+              <h3>Editor, terminal and agent in one window.</h3>
+            </div>
+            <div class="sc-body">
+              <p>Open a folder, and the file tree, editor, terminal and agent panel are all there. You see the
+                live plan, approve actions as they come up, and every artifact the agent leaves behind.</p>
+            </div>
+          </div>
+          <figure class="shot shot-app">
+            <img src="asset/app.png" width="1918" height="1017" loading="lazy" alt="The TermiCursor desktop app with file tree, editor, terminal and agent panel"
+              onerror="this.parentElement.classList.add('shot-missing')" />
+            <figcaption>Screenshot coming soon</figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════ PRIVACY ═══════════ -->
+    <section id="privacy" class="section section-alt">
+      <div class="container">
+        <div class="section-head">
+          <span class="eyebrow">Privacy &amp; safety</span>
+          <h2>Local by default. Clear about the rest.</h2>
+        </div>
+        <div class="privacy">
+          <div class="privacy-col reveal">
+            <h3><span class="dot dot-green"></span>Stays on your PC</h3>
+            <ul>
+              <li>Your code and its search index</li>
+              <li>Model inference, with Ollama</li>
+              <li>Sessions and project memory</li>
+              <li>No telemetry in the app</li>
+            </ul>
+          </div>
+          <div class="privacy-col reveal">
+            <h3><span class="dot dot-orange"></span>Uses the network</h3>
+            <ul>
+              <li>Checking GitHub for app updates</li>
+              <li>Downloading models, when you click Install</li>
+              <li>Web pages the agent opens</li>
+              <li>Groq, only if you choose it (it sends your prompts and code)</li>
+            </ul>
+          </div>
+        </div>
+        <div class="safety-strip reveal">
+          <div><b>Locked-down local API.</b> A secret made at each launch, so other programs and websites can't drive
+            the agent.</div>
+          <div><b>You approve commands.</b> Destructive ones always ask, even with auto-approve on.</div>
+          <div><b>Read every line.</b> MIT-licensed. <a
+              href="https://github.com/MShreyash09/TermiCursor/blob/main/SECURITY.md" target="_blank"
+              rel="noopener">Security policy</a></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════ FAQ ═══════════ -->
+    <section id="faq" class="section">
+      <div class="container container-narrow">
+        <div class="section-head">
+          <span class="eyebrow">FAQ</span>
+          <h2>Questions</h2>
+        </div>
+        <div class="faq">
+          <details>
+            <summary>Is it free?</summary>
+            <p>Yes. TermiCursor is open source under the MIT license. With Ollama there's nothing to pay for.</p>
+          </details>
+          <details>
+            <summary>What do I need to run it?</summary>
+            <p>Windows 10 or 11 and <a href="https://ollama.com/download" target="_blank" rel="noopener">Ollama</a>.
+              On first run the app offers to download its default models (about 2.2 GB). 8 GB of RAM is a
+              comfortable minimum.</p>
+          </details>
+          <details>
+            <summary>Which models does it use?</summary>
+            <p><code>qwen2.5-coder:3b</code> for the agent and <code>nomic-embed-text</code> for search by default.
+              You can pick any Ollama model in Settings, or switch to Groq.</p>
+          </details>
+          <details>
+            <summary>Does my code leave my computer?</summary>
+            <p>Not when you use Ollama. The only network traffic is update checks, model downloads, and pages the
+              agent opens. Choose Groq and your prompts and the code the agent reads go to Groq.</p>
+          </details>
+          <details>
+            <summary>Could it break my project?</summary>
+            <p>It asks before running commands, deleting files, or writing outside the project folder, so you
+              review each risky step. Keep your project in git so every change is easy to undo.</p>
+          </details>
+          <details>
+            <summary>Mac or Linux?</summary>
+            <p>The desktop app is Windows-only for now. The terminal version is plain Python
+              (<code>pip install</code> above), so it may work elsewhere, but Windows is what's tested.</p>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════ FINAL CTA ═══════════ -->
+    <section class="section final">
+      <div class="container final-inner reveal">
+        <h2>Give it a task<span class="caret caret-lg" aria-hidden="true"></span></h2>
+        <p>Install Ollama, download TermiCursor, open a folder.</p>
+        <div class="cta-row cta-center">
+          <a href="https://github.com/MShreyash09/TermiCursor/releases/latest" class="btn btn-primary"
+            data-track="download">Download for Windows</a>
+          <a href="https://ollama.com/download" class="btn btn-ghost" target="_blank" rel="noopener">Get Ollama</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ═══════════ FOOTER ═══════════ -->
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div>
+        <a href="#" class="brand" aria-label="TermiCursor home">
+          <span class="brand-termi">termi</span><span class="brand-cursor">cursor</span>
+        </a>
+        <p class="footer-tag">A local AI coding agent. Free and open source.</p>
+      </div>
+      <nav class="footer-links" aria-label="Footer">
+        <a href="https://github.com/MShreyash09/TermiCursor" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/MShreyash09/TermiCursor/releases" target="_blank" rel="noopener">Releases</a>
+        <a href="https://github.com/MShreyash09/TermiCursor/blob/main/SECURITY.md" target="_blank"
+          rel="noopener">Security</a>
+        <a href="https://github.com/MShreyash09/TermiCursor/blob/main/LICENSE" target="_blank" rel="noopener">MIT
+          License</a>
+        <a href="https://mail.google.com/mail/?view=cm&fs=1&to=shreyashmandlapure09@gmail.com" target="_blank"
+          rel="noopener noreferrer">Contact</a>
+      </nav>
     </div>
-    <div class="footer-bottom">
-      <p>&copy; 2026 TermiCursor. Built with ❤️ for developers who care about privacy.</p>
-    </div>
+    <div class="container footer-bottom">&copy; 2026 TermiCursor</div>
   </footer>
 
   <script src="script.js"></script>

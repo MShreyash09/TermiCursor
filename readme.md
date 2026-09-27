@@ -13,9 +13,11 @@ your code, embeddings and inference stay on your PC.
 **[Download the latest Windows installer](https://github.com/MShreyash09/TermiCursor/releases/latest)**
 
 1. Install [Ollama](https://ollama.com/download) and make sure it's running.
-2. Install and open TermiCursor. The status bar shows **Ollama Ready** once it can reach Ollama.
-3. If it shows **Models Missing**, click **Install Now**. The default models
-   (`qwen2.5-coder:3b` and `nomic-embed-text`) are about 2.2 GB in total.
+2. Install and open TermiCursor. The status bar turns green and shows **ready** with the
+   model name once it can reach Ollama.
+3. If it shows **Models missing**, click **Install** in the status bar (or the download
+   link on the welcome screen). The default models (`qwen2.5-coder:3b` and
+   `nomic-embed-text`) are about 2.2 GB in total.
 4. Open a project folder and give the agent a task.
 
 Requirements: Windows 10/11 and 8 GB RAM recommended. The browser tools use the Microsoft Edge that
@@ -25,8 +27,8 @@ comes with Windows.
 - Checking GitHub for TermiCursor updates.
 - Downloading models through Ollama (only when you click Install).
 - Web pages the agent opens with its browser tools.
-- **Groq (optional):** if you choose Groq as the LLM provider in Settings, your prompts and
-  the code the agent reads are sent to Groq's cloud API.
+- **Cloud models (optional):** if you choose Groq or a custom OpenAI-compatible provider in
+  Settings, your prompts and the code the agent reads are sent to that provider.
 
 ### Safety
 - The agent asks before **every** shell command and before deleting files or writing outside
@@ -39,54 +41,154 @@ comes with Windows.
 
 ---
 
-##  Architecture Overview
+## Architecture
 
-TermiCursor divides operations into two workflows: **Ingestion** (populating the vector
-database) and the **Agent Loop** (routing, planning, and tool-calling execution). All
-agent code lives in `core/` (`core/agent`, `core/tools`, `core/memory`,
-`core/persistence`, `core/artifacts`); `rag.py` is now retrieval-only.
+TermiCursor has two front ends, the **desktop app** and the **terminal app**, over one
+Python agent core (`core/`). The desktop app starts a local FastAPI backend and talks to it
+over HTTP and a WebSocket; the terminal app runs the same agent in-process. Models run in
+Ollama on your PC unless you opt into a cloud provider.
 
-### 1. Ingestion Phase (`ingest`)
-1. **File Scanning:** Uses `GenericLoader` from LangChain to scan code files matching `.py`, `.js`, `.jsx`, `.ts`, and `.tsx`.
-2. **Language Parser:** Analyzes documents dynamically and assigns syntax parsing tags (`metadata["language"]`).
-3. **Language-Aware Splitting:** Documents are grouped by language, and chunked using syntax-specific token splitting rules (`RecursiveCharacterTextSplitter.from_language`) to ensure functions, class signatures, and control structures remain cohesive.
-4. **Vector Database Storage:** Semantic text embeddings are generated using Ollama's `nomic-embed-text` model and indexed into local Qdrant collections.
+### System overview
 
-### 2. Agent Loop (`core/agent/loop.py`)
-1. **Route:** `core/agent/router.py` classifies the goal as `simple` (question/lookup —
-   answered directly, no planning) or `complex` (build/change task — planned first).
-   Heuristics resolve most cases with zero LLM calls.
-2. **Plan (complex only):** decomposes the goal into an ordered task list.
-3. **Execute:** each step runs a bounded ReAct loop — the model emits one JSON
-   tool-call per turn, validated against a schema, executed, and fed back — until it
-   returns a final answer. Tools, modeled on Cursor / Claude Code:
-   - find: `grep` (exact text/regex, with context lines), `find_files` (glob), `list_dir`,
+```mermaid
+flowchart TB
+    subgraph Clients["You use it from"]
+        direction LR
+        subgraph Desktop["Desktop app · Electron"]
+            direction LR
+            UI["React UI<br/>explorer · editor · terminal · agent panel"]
+            MAIN["Electron main process<br/>starts backend · shell · file access"]
+            UI <-->|"IPC · preload"| MAIN
+        end
+        CLI["Terminal app<br/>cli.py"]
+    end
+
+    subgraph Backend["Python backend · FastAPI · server.py"]
+        direction TB
+        API["REST + WebSocket<br/>per-launch token · origin check"]
+        LOOP["Agent loop · core/agent<br/>router · planner · executor"]
+        GATE{{"Trust gate<br/>asks you before risky actions"}}
+        TOOLS["Tools · core/tools<br/>find · read · edit · run · browse"]
+        RAG["Indexing + retrieval<br/>rag.py"]
+        API --> LOOP
+        LOOP -->|"one JSON tool call per turn"| GATE
+        GATE -->|"safe or approved"| TOOLS
+        TOOLS -->|"search_codebase"| RAG
+    end
+
+    subgraph PC["Stays on your PC"]
+        direction LR
+        OLLAMA["Ollama<br/>qwen2.5-coder:3b · nomic-embed-text"]
+        FILES[("Your project")]
+        QDRANT[("Qdrant<br/>vector index")]
+        STORE[("SQLite sessions · project memory<br/>artifacts: logs, recordings")]
+        BROWSER["Edge / Chromium<br/>via Playwright"]
+    end
+
+    CLOUD["Groq or OpenAI-compatible API<br/>optional, off by default"]
+
+    MAIN -->|"starts it with a token"| API
+    UI -->|"HTTP + WebSocket"| API
+    CLI -->|"in-process"| LOOP
+    LOOP -->|"chat"| OLLAMA
+    LOOP -.->|"only if selected in Settings"| CLOUD
+    LOOP --> STORE
+    TOOLS --> FILES
+    TOOLS --> BROWSER
+    RAG -->|"embeddings"| OLLAMA
+    RAG --> QDRANT
+```
+
+| Part | Where | What it does |
+|---|---|---|
+| Desktop app | `frontend/` (Electron, React, Vite, Tailwind) | Editor (Monaco), file tree, terminal (xterm.js), agent panel. The main process starts the packaged backend with a per-launch token and guards navigation. |
+| Terminal app | `cli.py` (`termicursor`), `main.py` (headless) | Same agent, in the terminal. `tab` cycles Ask / Plan / Build. |
+| Backend | `server.py` (FastAPI) | Sessions, plan review, approvals, artifacts, model downloads; streams agent events over `WS /ws/agent/{session_id}`. |
+| Agent | `core/agent/` | `loop.py` runs requests; `router.py` (simple vs multi-step), `planner.py`, `context.py` (grounding), `prompts.py`, `json_protocol.py`, `llm_client.py` (Ollama or OpenAI-compatible). |
+| Tools | `core/tools/` | `grep`, `find_files`, `list_dir`, `read_file`, `search_codebase`, `edit_file`, `write_file`, `delete_file`, `run_shell_command`, browser tools; `trust_gate.py` decides what needs approval. |
+| Retrieval | `rag.py` | Indexes a folder into a local Qdrant collection and serves semantic search. |
+| Storage | `core/persistence`, `core/memory`, `core/artifacts` | SQLite sessions and tool calls, per-folder project memory (JSON), command logs and browser recordings. |
+| Settings | `core/config.py` | Reads `settings.json` on each run, so changes apply without a restart. |
+
+### How a request runs
+
+```mermaid
+flowchart TD
+    REQ(["Your request"]) --> MODE{"Mode"}
+    MODE -->|"Ask"| ONE_ASK["One step<br/>read-only tools"]
+    MODE -->|"Build"| ROUTE{"Router<br/>question or task?"}
+    ROUTE -->|"question or small task"| ONE["One step<br/>all tools"]
+    ROUTE -->|"multi-part task"| PLAN_B["Planner writes steps"]
+    MODE -->|"Plan"| PLAN_P["Planner writes steps"]
+    PLAN_P --> REVIEW{"You review the plan"}
+    REVIEW -->|"ask for changes"| PLAN_P
+    REVIEW -->|"reject"| STOPPED(["Stopped, nothing written"])
+    REVIEW -->|"approve, steps editable"| STEPS["Run the steps in order"]
+    PLAN_B --> STEPS
+    ONE_ASK --> CTX
+    ONE --> CTX
+    STEPS --> CTX
+
+    subgraph STEP["Each step: a bounded ReAct loop"]
+        CTX["Context: files named in the request,<br/>project file list, project memory"] --> THINK["Model returns one JSON tool call<br/>or a final answer"]
+        THINK -->|"tool call"| CHECK["Validate args · trust gate"]
+        CHECK -->|"safe"| RUN["Run the tool"]
+        CHECK -->|"risky"| APPROVE{"You approve?"}
+        APPROVE -->|"allow"| RUN
+        APPROVE -->|"deny"| FEEDBACK
+        RUN --> FEEDBACK["Feedback to the model<br/>tool result · syntax check · precise errors"]
+        FEEDBACK --> THINK
+        THINK -->|"final answer"| GROUND{"Grounded?<br/>looked at the code,<br/>made the change"}
+        GROUND -->|"no: nudge once"| FEEDBACK
+    end
+
+    GROUND -->|"yes"| DONE(["Answer or summary, streamed live"])
+```
+
+1. **Route.** Ask answers directly with read-only tools. Plan always writes a plan and waits
+   for you to approve, edit or revise it. Build lets `core/agent/router.py` decide: questions
+   and small tasks run as one step, multi-part tasks get a plan first. Heuristics resolve most
+   cases without an LLM call.
+2. **Execute.** Each step is a bounded ReAct loop: the model emits one JSON tool call per turn,
+   which is validated against the tool's schema, checked by the trust gate, run, and fed back,
+   until it returns a final answer. The tools follow how Cursor and Claude Code work:
+   - find: `grep` (exact text or regex, with context lines), `find_files` (glob), `list_dir`,
      `search_codebase` (semantic; falls back to text search when the project isn't indexed)
    - read: `read_file` (numbered lines, 200-line pages)
-   - change: `edit_file` (exact `old_string` → `new_string`, must match once; empty
+   - change: `edit_file` (exact `old_string` → `new_string`, must match once; an empty
      `old_string` appends), `write_file` (new files), `delete_file`
-   - run/verify: `run_shell_command`, `browser_navigate` / `browser_click` / `browser_get_text`
-4. **Grounding rules** (`core/agent/context.py`, `loop.py`), so a small model looks
-   instead of guessing: files named in the request are read up front (like an
-   @-mention); the prompt includes the project's file list; answering a question
-   about the project without looking gets one nudge; a change request that ends
-   without any edit gets one nudge; `write_file` over an unread file, or one that
-   would erase most of it, is refused; edits keep the file's line endings and report
-   a syntax check.
-5. **Trust gate:** every shell command (unless auto-approve is on; destructive ones
-   always), deletes, and out-of-project writes pause for your approval.
-6. **Stream + stop:** every step streams live over `WS /ws/agent/{session_id}`; a
-   running agent can be stopped at any time (`POST /sessions/{id}/cancel`).
-7. **Browser verification (text-only, no vision):** qwen2.5-coder:3b can't see
-   images, so `browser_navigate`/`browser_click`/`browser_get_text` give it back
-   extracted page text and console/network errors — never pixels — to verify a
-   web app it built. Separately, and purely for you, the **entire browser
-   session is recorded to video** automatically (`core/tools/browser_tools.py`)
-   and shows up in the Artifact Trail as a `.webm` you can open and watch — the
-   model never sees it, it's not fed back into the loop, it's just proof of
-   what happened.
+   - run and verify: `run_shell_command`, `browser_navigate` / `browser_click` / `browser_get_text`
+3. **Grounding** (`core/agent/context.py`, `loop.py`), so a small model looks instead of
+   guessing: files named in the request are read up front (like an @-mention); the prompt
+   includes the project's file list; a project question answered without looking gets one
+   nudge, and so does a change request that ends without an edit. `write_file` over an unread
+   file, or one that would erase most of it, is refused. Edits keep the file's line endings and
+   report a syntax check.
+4. **Trust gate.** Every shell command (unless auto-approve is on; destructive ones always),
+   deletes, and writes outside the project pause for your approval.
+5. **Stream and stop.** Every step streams live over the WebSocket, and a run can be stopped at
+   any time (`POST /sessions/{id}/cancel`).
+6. **Browser checks (text only).** qwen2.5-coder:3b can't see images, so the browser tools
+   return page text and console/network errors, never pixels. Separately, and only for you, the
+   whole browser session is recorded to a `.webm` that appears in the Artifacts list.
 
-See [`core/`](core) for the implementation and the frontend's `AgentPanel` for the UI.
+### Indexing and search
+
+```mermaid
+flowchart LR
+    OPEN["Open a folder"] --> WALK["Walk project files<br/>~25 file types · skips .git, node_modules, dist"]
+    WALK --> CHUNK["Language-aware chunks<br/>500 chars · 50 overlap"]
+    CHUNK --> EMBED["nomic-embed-text<br/>via Ollama"]
+    EMBED --> COL[("Qdrant collection<br/>one per folder")]
+    COL --> SEARCH["search_codebase<br/>top-k chunks with file paths"]
+    NOIDX["No index yet<br/>e.g. the terminal app"] -.-> GREP["search_codebase falls back<br/>to grep text search"]
+```
+
+When you open a folder (Settings → *Index project on open*), `rag.py` walks the project,
+splits each file with LangChain's language-aware splitter so functions and classes stay
+together, embeds the chunks with `nomic-embed-text`, and stores them in a local Qdrant
+collection named after the folder's path hash, so projects never mix. Reopening a folder
+reuses its index. Exact-match search (`grep`) works without any index.
 
 ---
 
@@ -155,6 +257,47 @@ In dev, the backend runs without the per-launch token (only the packaged app set
 The GUI (`npm run dev` in `frontend/`) is the primary way to use the agent — it shows
 the live plan, tool calls, approval prompts, and artifacts, and lets you stop a run
 mid-flight.
+
+---
+
+## References
+
+Official documentation and sources used or referenced to build TermiCursor.
+
+### Models and local inference
+- [Ollama](https://ollama.com) and the [Ollama API docs](https://docs.ollama.com/api): local model runtime (`/api/chat`, `/api/tags`, `/api/pull`)
+- [qwen2.5-coder on Ollama](https://ollama.com/library/qwen2.5-coder) and the [Qwen2.5-Coder Technical Report](https://arxiv.org/abs/2409.12186): the default agent model
+- [nomic-embed-text on Ollama](https://ollama.com/library/nomic-embed-text): the embedding model
+- [Groq OpenAI compatibility](https://console.groq.com/docs/openai): the optional cloud provider and the OpenAI-compatible request format used for custom providers
+
+### Agent design
+- [ReAct: Synergizing Reasoning and Acting in Language Models](https://arxiv.org/abs/2210.03629): the reason → act → observe loop each step runs
+- [Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks](https://arxiv.org/abs/2005.11401): the idea behind codebase retrieval
+- [Cursor: Agent overview](https://cursor.com/docs/agent/overview) and [Cursor: Search](https://cursor.com/docs/agent/tools/search): exact search first, semantic search second
+- [Claude Code: Tools reference](https://code.claude.com/docs/en/tools-reference): Read / Edit / Grep / Glob design (numbered paged reads, exact-match edits that must be unique)
+- [aider: Edit formats](https://aider.chat/docs/more/edit-formats.html) and [aider: Repository map](https://aider.chat/docs/repomap.html): search/replace edits and giving the model a map of the repo
+- [Google Antigravity: Implementation Plan](https://antigravity.google/docs/implementation-plan) and [Build with Google Antigravity](https://developers.googleblog.com/build-with-google-antigravity-our-new-agentic-development-platform/): plan-first mode with a reviewable plan
+- [opencode](https://opencode.ai): inspiration for the terminal UI
+
+### Backend and retrieval
+- [FastAPI](https://fastapi.tiangolo.com/), [Uvicorn](https://uvicorn.dev/), [Pydantic](https://docs.pydantic.dev/), [aiohttp](https://docs.aiohttp.org/)
+- [LangChain](https://docs.langchain.com/oss/python/langchain/overview), [LangChain text splitters](https://docs.langchain.com/oss/python/integrations/splitters), [LangChain + Ollama](https://docs.langchain.com/oss/python/integrations/providers/ollama)
+- [Qdrant documentation](https://qdrant.tech/documentation/) and the [Qdrant Python client](https://github.com/qdrant/qdrant-client) (local mode)
+- [sqlite3 (Python)](https://docs.python.org/3/library/sqlite3.html)
+- [Playwright for Python](https://playwright.dev/python/): browser tools and recordings
+- [PyInstaller](https://pyinstaller.org/): packages the backend into an executable
+
+### Terminal app
+- [Rich](https://rich.readthedocs.io/), [prompt_toolkit](https://python-prompt-toolkit.readthedocs.io/), [questionary](https://questionary.readthedocs.io/)
+
+### Desktop app
+- [Electron](https://www.electronjs.org/docs/latest/) and the [Electron security checklist](https://www.electronjs.org/docs/latest/tutorial/security)
+- [electron-builder](https://www.electron.build/) (installer; its [repository](https://github.com/electron-userland/electron-builder) includes electron-updater) and [electron-log](https://github.com/megahertz/electron-log)
+- [React](https://react.dev/), [Vite](https://vite.dev/), [Tailwind CSS](https://tailwindcss.com/), [TypeScript](https://www.typescriptlang.org/)
+- [Monaco Editor](https://microsoft.github.io/monaco-editor/) and [@monaco-editor/react](https://github.com/suren-atoyan/monaco-react)
+- [xterm.js](https://xtermjs.org/), [react-resizable-panels](https://github.com/bvaughn/react-resizable-panels), [cmdk](https://github.com/dip/cmdk), [Lucide icons](https://lucide.dev/), [react-markdown](https://github.com/remarkjs/react-markdown)
+- [Playwright Electron API](https://playwright.dev/docs/api/class-electron): the end-to-end GUI test
+- [Mermaid](https://mermaid.js.org/): the diagrams in this README
 
 ## License
 

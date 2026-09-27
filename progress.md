@@ -123,3 +123,8 @@
 - The 3B model's reasoning is the ceiling: it sometimes misreads evidence it found, or wanders on "verify" steps. A 7B coder model (e.g. `qwen2.5-coder:7b`) should do noticeably better if the hardware allows.
 - `xterm` 5.3 → `@xterm/xterm` migration would remove the viewport workaround (`ponytail:` note in `TerminalPanel.tsx`).
 
+## 2026-09-28 (round 7): README architecture + references
+- Added three Mermaid diagrams (GitHub renders them): system overview, how a request runs (modes, plan review, ReAct step loop, trust gate, grounding), indexing and search. All three were checked by rendering with mermaid.js in light and dark themes.
+- Added a component table (part, folder, role) and fixed stale claims (status bar wording, cloud providers, indexed file types, per-mode routing).
+- Added a References section: official docs for every runtime piece plus the agent-design sources (ReAct, RAG, Cursor, Claude Code, aider, Antigravity, opencode). All 50 external links checked (HTTP 200); the repo's own Releases link 404s until the repo is public.
+

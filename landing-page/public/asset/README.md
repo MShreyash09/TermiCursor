@@ -1,6 +1,6 @@
 # Landing page images
 
-The page (`../index.html`) loads these files. If a file is missing, its frame shows
+The page (`../../src/App.jsx`) loads these files. If a file is missing, its frame shows
 "Screenshot coming soon" instead of a broken image.
 
 | File | Where it appears | Notes |
@@ -12,4 +12,4 @@ The page (`../index.html`) loads these files. If a file is missing, its frame sh
 
 The `cli-*.png` images were made by running the real CLI and exporting its output
 (rich → SVG → PNG at 2x). Replace any of them by dropping a file with the same name here.
-If the new image has a different aspect ratio, update the `width`/`height` on the hero `<img>`.
+If the new image has a different aspect ratio, update its `width`/`height` in `src/App.jsx`.

@@ -1,4 +1,4 @@
-// TermiCursor landing page
+// Nav, copy buttons and reveal-on-scroll for docs.html (index.html does the same in React)
 
 // Nav border once the page scrolls
 const nav = document.getElementById('nav');

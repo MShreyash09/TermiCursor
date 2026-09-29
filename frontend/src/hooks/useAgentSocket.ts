@@ -111,7 +111,9 @@ export function useAgentSocket(backendPort: number, projectPath: string): UseAge
       pushLog({ kind: 'error', text: 'No project folder is open.' });
       return;
     }
-    setSteps([]); setArtifacts([]); setLog([]); setPendingApproval(null); setMode(null);
+    // Only per-run state resets here; the transcript and artifacts carry across prompts until
+    // "New conversation" (reset) so earlier messages stay readable.
+    setSteps([]); setPendingApproval(null); setMode(null);
     sawDoneRef.current = false;
     setStatus('planning');
     pushLog({ kind: 'goal', text: goal, agent });

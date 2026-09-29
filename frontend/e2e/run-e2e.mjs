@@ -80,13 +80,15 @@ try {
     `tools: ${looked.join(',')}; answer ${/\b5\b/.test(transcript) ? 'correct (5)' : 'wrong'}`);
   await shot('04-ask');
 
-  // 6. Plan mode: review, approve, then it codes (approving any command it wants to run)
-  await win.getByTitle('New conversation').click();
+  // 6. Plan mode, in the same conversation: review, approve, then it codes (approving any command it wants to run)
   await win.getByTestId('mode-plan').click();
   await win.getByTestId('agent-input').fill('Add a function subtract(a, b) to calc.py that returns a - b');
   await win.keyboard.press('Enter');
   await win.getByTestId('plan-review').waitFor({ timeout: 240000 });
   check('plan mode stops for review', true, `${await win.getByTestId('plan-review').locator('textarea').count() - 1} steps`);
+  const history = await win.getByTestId('agent-transcript').textContent();
+  check('earlier messages stay in the transcript',
+    history.includes('What does multiply(2, 3) return') && history.includes('Add a function subtract'));
   await shot('05-plan-review');
   await win.getByTestId('plan-approve').click();
   await win.waitForTimeout(500);
@@ -98,6 +100,8 @@ try {
   const editorAfter = (await win.locator('.view-lines').textContent()).replace(/\u00a0/g, ' ');
   check('editor shows the agent\'s change', editorAfter.includes('def subtract'));
   await shot('06-plan-done');
+  await win.getByTitle('New conversation').click();
+  check('new conversation clears the transcript', await win.getByTestId('agent-transcript').count() === 0);
 
   // 7. Settings, profile, command palette
   await win.getByLabel('Settings (Ctrl+,)').click();

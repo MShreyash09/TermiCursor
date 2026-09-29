@@ -57,6 +57,7 @@
       <a href="#tools">Tools</a>
       <p class="docs-group">Configure</p>
       <a href="#models">Models &amp; providers</a>
+      <a href="#pick-model">Pick a model</a>
       <a href="#settings">Settings file</a>
       <a href="#data">Where data lives</a>
       <p class="docs-group">Help</p>
@@ -181,6 +182,70 @@ termicursor</code></pre>
         </ul>
         <p class="note warn">With Groq or a custom provider, your prompts and the code the agent reads are sent to
           that provider.</p>
+      </section>
+
+      <section id="pick-model">
+        <h2>Pick a model for your PC</h2>
+        <p>Bigger models write better code but need more memory. If a model doesn't fit, replies crawl or Ollama fails
+          to load it. What matters is the memory that holds the model: <b>VRAM</b> on a supported GPU (fast), otherwise
+          system <b>RAM</b> (works on any modern CPU, but slower).</p>
+        <table>
+          <thead><tr><th>Model</th><th>Download<sup>[2]</sup></th><th>Memory used<sup>[3]</sup></th><th>Recommended PC</th></tr></thead>
+          <tbody>
+            <tr><td><code>qwen2.5-coder:1.5b</code></td><td>1.0 GB</td><td>~1.2-1.5 GB</td><td>Under 8 GB RAM, no GPU. Simple edits only.</td></tr>
+            <tr><td><code>qwen2.5-coder:3b</code> <b>(default)</b></td><td>1.9 GB</td><td>~2.1-2.5 GB</td><td>8 GB RAM, or a 4 GB GPU</td></tr>
+            <tr><td><code>qwen2.5-coder:7b</code></td><td>4.7 GB</td><td>~5.4-5.5 GB</td><td>16 GB RAM, or an 8 GB GPU</td></tr>
+            <tr><td><code>qwen2.5-coder:14b</code></td><td>9.0 GB</td><td>~9.8-9.9 GB</td><td>16-32 GB RAM, or a 12 GB+ GPU</td></tr>
+            <tr><td><code>qwen2.5-coder:32b</code></td><td>20 GB</td><td>~18.7-18.9 GB</td><td>32 GB+ RAM, or a 24 GB GPU</td></tr>
+          </tbody>
+        </table>
+        <p>Install one with <code>ollama pull &lt;model&gt;</code>, then pick it in <b>Settings</b> or with
+          <code>/model</code>.</p>
+
+        <h3>How these numbers were chosen</h3>
+        <ul>
+          <li>Ollama's own guidance: <em>"You should have at least 8 GB of RAM available to run the 7B models, 16 GB
+              to run the 13B models, and 32 GB to run the 33B models."</em><sup>[1]</sup> That's RAM <em>available</em>,
+            so on top of Windows and your other apps.</li>
+          <li>"Memory used" is Qwen's measured footprint for 4-bit versions of each size<sup>[3]</sup>, which is what
+            Ollama downloads by default<sup>[2]</sup>. The GPU column adds headroom for context, since the
+            model has to fit in VRAM entirely to run at full speed.</li>
+          <li>Example: with 8 GB RAM and no big GPU, 3B runs fine but 7B (~5.5 GB) leaves too little for Windows,
+            so it swaps and stalls.</li>
+        </ul>
+
+        <h3>Does my GPU count?</h3>
+        <p>Ollama uses<sup>[5]</sup>:</p>
+        <ul>
+          <li><b>NVIDIA</b>: compute capability 5.0+ (GTX 900 series and newer) with driver 550 or newer.</li>
+          <li><b>AMD</b> on Windows: Radeon RX cards on the supported list (e.g. RX 7900 XTX / XT) with a ROCm-capable
+            driver. Others may work through Vulkan.</li>
+          <li><b>Intel / integrated graphics</b>: at most via Vulkan. Plan on the RAM column instead.</li>
+        </ul>
+
+        <h3>Is it too big?</h3>
+        <ul>
+          <li>Run <code>ollama ps</code> while it answers. The PROCESSOR column shows <b>100% GPU</b> (all in VRAM),
+            <b>100% CPU</b> (all in RAM), or a split like <b>48%/52% CPU/GPU</b><sup>[4]</sup>. A split or 100% CPU on
+            a GPU machine means the model is too big for your VRAM: drop one size.</li>
+          <li>Out-of-memory errors, a frozen PC, or a first reply that takes over a minute all mean the same.</li>
+          <li>Switching is instant, no restart needed.</li>
+        </ul>
+        <p class="note">Can't run anything above 3B? Use a Groq or custom provider for bigger models (see above),
+          knowing your prompts and code are sent to them.</p>
+
+        <h3>Sources</h3>
+        <ol class="sources">
+          <li><a href="https://github.com/ollama/ollama/blob/v0.5.7/README.md#model-library" target="_blank"
+              rel="noopener">Ollama README, model library (v0.5.7)</a></li>
+          <li><a href="https://ollama.com/library/qwen2.5-coder/tags" target="_blank" rel="noopener">Ollama library:
+              qwen2.5-coder tags</a></li>
+          <li><a href="https://qwen.readthedocs.io/en/v2.5/benchmark/speed_benchmark.html" target="_blank"
+              rel="noopener">Qwen2.5 speed benchmark</a> (AWQ / GPTQ-Int4 GPU memory, measured on an A100)</li>
+          <li><a href="https://docs.ollama.com/faq" target="_blank" rel="noopener">Ollama FAQ: how can I tell if my
+              model was loaded onto the GPU?</a></li>
+          <li><a href="https://docs.ollama.com/gpu" target="_blank" rel="noopener">Ollama docs: hardware support</a></li>
+        </ol>
       </section>
 
       <section id="settings">

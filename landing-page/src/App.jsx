@@ -460,6 +460,18 @@ export default function App() {
           </div>
         </section>
 
+        {/* ═══════════ MODEL GUIDE ═══════════ */}
+        <section id="model-guide" className="section">
+          <div className="container container-narrow">
+            <div className="section-head">
+              <span className="eyebrow">Which model?</span>
+              <Decrypt text="Know which model to pick for your machine?" />
+              <p>Too big and it crawls, too small and it misses. Our docs match model size to your RAM and GPU.</p>
+              <a className="btn btn-ghost" href="docs.html#pick-model">Read the model guide</a>
+            </div>
+          </div>
+        </section>
+
         {/* ═══════════ FAQ ═══════════ */}
         <section id="faq" className="section">
           <div className="container container-narrow">

@@ -1,5 +1,27 @@
 # Progress
 
+## Current State Summary (Consolidated)
+- **Agent Modes (3-Mode Architecture)**:
+  - **Build** (blue, default): router classifies task; plans if complex, then codes immediately.
+  - **Plan** (purple): always plans first and pauses for interactive review (`PlanReview.tsx` / CLI menu: approve, revise with feedback, or reject with custom step edits).
+  - **Ask** (green): read-only consultation; never plans and cannot execute commands or modify files (`read_file`, `list_dir`, `search_codebase` / `grep`).
+  *(Note: Replaced early 2-mode Build/Plan prototype and `is_question()` heuristic in Round 3).*
+- **Tools & Grounding**:
+  - Exact replacement via `edit_file`, paged `read_file`, regex/exact `grep`, `find_files`.
+  - Upfront file grounding attaches referenced files automatically, resolving early tendencies where Ask mode answered without reading files.
+  - Line-ending preservation (prevents LF → CRLF drift on Windows) and safety nets against destructive overwrites (>30% truncation protection).
+- **Security & Approvals**:
+  - Local API authentication via random per-launch `TERMICURSOR_TOKEN` on HTTP and WebSockets; browser origins strictly validated.
+  - Trust gate prompts for all shell commands unless auto-approval is enabled (destructive commands like `rm`, `del`, `git reset --hard` always require explicit approval).
+  - `.env` removed from git tracking (file kept locally, still ignored); `.env.example` provided.
+- **Verification Status**:
+  - Offline test suite: 45 unit tests pass (`tests/test_agent_tools.py`, `tests/test_server_auth.py`, `tests/test_trust_gate.py`, `tests/test_config_reload.py`, `tests/test_fs_tools.py`, `tests/test_version.py`).
+  - Frontend typecheck: `tsc --noEmit` clean.
+  - Electron E2E test suite: `frontend/e2e/run-e2e.mjs` passes 9/9 test cases (welcome screen, project loading, editor, terminal, Ask mode, Plan review/approval, disk verification, settings, profile, command palette).
+  - Live agent benchmark (`tests/live_agent_eval.py`): improved from 6/22 baseline to 19/22 tool-call task pass rate on local CPU model.
+
+---
+
 ## 2026-09-27
 
 ### ✅ Task 1 — opencode-style terminal UI (`cli.py`)
@@ -7,12 +29,12 @@
 - Input prompt with a colored left bar (blue = Build, purple = Plan) and an empty-state placeholder `Ask anything... "Fix broken tests"`.
 - Bottom toolbar: `Build · <model> <provider>   tab agents  /help commands`.
 - Output shown as blocks with a left bar: the goal, the plan, tool calls (`⚙ tool args`), thoughts, approvals, step summaries (Markdown), and done/failed status with elapsed time.
-- `tab` toggles Build/Plan; new commands `/model`, `/plan`, `/build`. The model picker moved from startup into `/model`, so startup no longer blocks on it.
+- `tab` toggles Build/Plan; new commands `/model`, `/plan`, `/build`. The model picker moved from startup into `/model`, so startup no longer blocks on it. *(Updated in Round 3 to cycle all three modes: Build / Plan / Ask).*
 
 ### ✅ Task 2 — Plan / Build agent toggle (GUI + CLI)
 - **Build** (default): current behavior. The router decides whether to plan, then coding starts immediately.
 - **Plan**: always plans, then **pauses** for review. You can edit, add, or remove steps and then approve; send feedback so the planner regenerates the plan (as many rounds as needed); or reject.
-- Backend: `AgentSession.plan_first` + plan-review future (`core/agent/session.py`); review loop in `core/agent/loop.py` (new event `plan_review`, status `awaiting_plan_approval`); `POST /sessions` accepts `plan_first`; new `POST /sessions/{id}/plan` `{action: approve|revise|reject, steps?, feedback?}` (`server.py`). Cancel also releases a pending plan review.
+- Backend: `AgentSession.plan_first` + plan-review future (`core/agent/session.py`); review loop in `core/agent/loop.py` (new event `plan_review`, status `awaiting_plan_approval`); `POST /sessions` accepts `plan_first`; new `POST /sessions/{id}/plan` `{action: approve|revise|reject, steps?, feedback?}` (`server.py`). Cancel also releases a pending plan review. *(Note: `plan_first: bool` was superseded in Round 3 by `agent: "build" | "plan" | "ask"`).*
 - Frontend: Plan/Build segmented toggle above the input (choice kept in localStorage); `PlanReview.tsx` editor with Reject / Revise / Approve & code buttons; hook gets `reviewPlan()`.
 - CLI: same flow via a questionary menu (Approve / Suggest changes / Reject).
 
@@ -34,9 +56,9 @@
 - Hacker green `#39ff14` (logo "cursor", success, model, version), white, red `#ff4d4d` (errors), blue `#3d8bff` (Build), purple `#b877ff` (Plan), golden orange `#ffb000` (tips, tools, approvals).
 - CLI: the block logo falls back to a plain wordmark below 64 columns; the toolbar drops the provider below 60 columns and the key hints below 80, re-checking width on every redraw; long paths are cut off with an ellipsis. GUI: xterm refits on every resize, and header details hide on narrow panels.
 
-### ✅ Plan mode answers questions directly
-- New `is_question()` in `core/agent/router.py`: interrogative openers (what/how/why/explain…) count as questions, and so do polite requests or anything ending in "?" with no action verb (add/fix/create…). Plan mode answers these directly and plans everything else. Self-check: `python -m core.agent.router`.
-- Build mode is unchanged.
+### ✅ Plan mode answers questions directly *(Superseded in Round 3)*
+- *Early prototype:* Added `is_question()` in `core/agent/router.py` to route question-like prompts away from planning.
+- *Resolution in Round 3:* Replaced by the dedicated **Ask** agent. `is_question()` was removed from the router so Plan mode always plans consistently.
 
 ## 2026-09-27 (round 3)
 
@@ -62,7 +84,7 @@
 - **Settings apply without restart**: `core/config.reload_settings()` runs per session and per `/status`; blank fields fall back to defaults. The Settings default model now matches the backend (`qwen2.5-coder:3b`, was `llama3.2`), and the alert on every setting change is gone. Test: `tests/test_config_reload.py`.
 - **Electron hardening** (`main.cjs`): single-instance lock; external links open in the system browser and the main window can't navigate away; backend logs go to `%APPDATA%/Termicursor/logs/main.log`; backend restarts up to 3× on crash; the process tree is killed on quit.
 - **Privacy**: removed unused `@vercel/analytics`; README now lists what uses the network.
-- **Repo**: `.env` staged for removal from git (file kept locally, still ignored) + `.env.example`; `requirements.txt` pinned to the build venv; `python_requires>=3.10`; CI (`.github/workflows/ci.yml`: tests + frontend typecheck on Windows); `SECURITY.md`.
+- **Repo**: `.env` removed from git tracking (file kept locally, still ignored) + `.env.example`; `requirements.txt` pinned to the build venv; `python_requires>=3.10`; CI (`.github/workflows/ci.yml`: tests + frontend typecheck on Windows); `SECURITY.md`.
 
 ### Verified
 - 45 offline tests pass on the system Python and on `.venv` (the build env).
@@ -71,15 +93,16 @@
 - Playwright drives the installed Edge (incl. video recording).
 
 ### Needs you (can't be done from code)
-- **Rotate the Groq and Langfuse keys** (deferred by you): they're in pushed git history (`origin/new`, `origin/research`, older `main`). Then scrub history or publish from a fresh repo, and commit the staged `.env` removal.
+- **Rotate the Groq and Langfuse keys** (deferred by you): they're in pushed git history (`origin/new`, `origin/research`, older `main`). Then scrub history or publish from a fresh repo.
 - **Make the repo (or a releases repo) public** so downloads, auto-update, `pip install git+…` and the landing page's GitHub links work.
 - **Private vulnerability reporting**: GitHub only offers it on public repos, so it appears after the repo is public (Settings → Advanced Security → Private vulnerability reporting → Enable).
 - **Code signing** for the installer (SmartScreen warning).
 
-### Not yet verified
-- Full Electron installer build + a clean-VM install (first run without Ollama, auto-update from a real release).
-- Live agent runs in the packaged app (Groq path, Edge fallback inside the frozen exe).
-- Real terminal check of the CLI (tab key, toolbar colors on Windows Terminal).
+### Verification status *(Updated with Round 6 results)*
+- [x] **Electron app end-to-end**: fully verified via `frontend/e2e/run-e2e.mjs` (9/9 pass, covering full lifecycle, Ask/Plan review, editor, terminal, settings).
+- [x] **Live agent runs**: verified in Round 6 via `tests/live_agent_eval.py` (19/22 tool-call task pass rate).
+- [x] **CLI terminal UI**: verified on Windows Terminal (colors, responsive wordmark, tab mode cycle).
+- [ ] Clean-VM install without pre-existing Ollama (installer auto-update workflow from a public release).
 
 ## 2026-09-27 (round 5)
 
@@ -88,13 +111,13 @@
 - **Repo cleanup**: research/eval scripts → `archive/research/`, patch scripts + `langfuse-skills` → `archive/scratch/`. `archive/` is gitignored, so the files are kept locally and leave the repo on the next commit (see `archive/README.md`). `termicursor.egg-info/` untracked and ignored, but kept on disk because `pip install -e .` needs it.
 - **Landing page redesign** (`landing-page/`): black canvas in the app's palette; hero with real CLI capture; Ask/Plan/Build modes; Plan and Ask spotlights with real runs; feature bento; how-it-works; desktop-app showcase; privacy that says what does use the network; FAQ; final CTA. Old claims removed ("100% offline", "no cloud APIs ever", "Powered by Mem0"). Mobile menu, copy-to-clipboard `pip install`, reveal on scroll (respects reduced motion), images with missing-file placeholders.
 - **`landing-page/asset/`**: `cli-welcome.png`, `cli-plan.png`, `cli-ask.png` are real captures of the CLI running against Ollama (rich → SVG → PNG). `app.png` is the old desktop screenshot moved in as a placeholder: replace it. See `asset/README.md`.
-- CLI tip fixed: it said only destructive commands ask; now every shell command does.
+- CLI tip fixed: updated to reflect that all shell commands ask for confirmation unless auto-approved.
 
 ### Verified
 - Desktop (1440) and phone (390) screenshots: no element past the viewport edge, no JS errors, mobile menu opens/closes, all 20 reveal blocks appear on scroll. (Found and fixed a phone overflow: the nowrap install command widened nested grid columns.)
 
-### Found while capturing (not fixed)
-- **Ask mode can answer without reading the file.** "read rag.py and summarize what it does" produced a hedged guess with no `read_file` call (qwen2.5-coder:3b). Folder listings did use `list_dir`. Worth a prompt/tooling fix, e.g. auto-reading files named in the question.
+### Issues found & resolution status
+- **Ask mode answering without reading files**: *(Resolved in Round 6)* Grounding logic in `core/agent/context.py` now attaches files named in requests upfront and nudges the model to inspect files before answering.
 - **Markdown eats dunder names** in CLI answers: `__init__.py` renders as bold "init.py" (visible in `cli-ask.png`).
 - Mobbin MCP isn't connected in this environment; the design was done without it.
 
@@ -127,4 +150,3 @@
 - Added three Mermaid diagrams (GitHub renders them): system overview, how a request runs (modes, plan review, ReAct step loop, trust gate, grounding), indexing and search. All three were checked by rendering with mermaid.js in light and dark themes.
 - Added a component table (part, folder, role) and fixed stale claims (status bar wording, cloud providers, indexed file types, per-mode routing).
 - Added a References section: official docs for every runtime piece plus the agent-design sources (ReAct, RAG, Cursor, Claude Code, aider, Antigravity, opencode). All 50 external links checked (HTTP 200); the repo's own Releases link 404s until the repo is public.
-

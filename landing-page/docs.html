@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Docs · TermiCursor</title>
+  <meta name="description" content="How to install, run and configure TermiCursor, the local AI coding agent." />
+  <meta name="theme-color" content="#000000" />
+  <link rel="icon"
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23000'/%3E%3Cpath d='M8 10l6 6-6 6' fill='none' stroke='%2339ff14' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3Crect x='16' y='20' width='9' height='3' rx='1' fill='%23fff'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700;800&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <script>
+    window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+  </script>
+  <script defer src="/_vercel/insights/script.js"></script>
+</head>
+
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <nav class="nav scrolled" id="nav" aria-label="Main">
+    <div class="container nav-inner">
+      <a href="index.html" class="brand" aria-label="TermiCursor home">
+        <span class="brand-termi">termi</span><span class="brand-cursor">cursor</span><span class="caret" aria-hidden="true"></span>
+      </a>
+      <div class="nav-links" id="navLinks">
+        <a href="index.html#modes">Modes</a>
+        <a href="index.html#features">Features</a>
+        <a href="docs.html" aria-current="page">Docs</a>
+        <a href="index.html#faq">FAQ</a>
+        <a href="https://github.com/MShreyash09/TermiCursor" class="nav-github" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/MShreyash09/TermiCursor/releases/latest" class="btn btn-primary btn-sm"
+          data-track="download">Download</a>
+      </div>
+      <button class="menu-btn" id="menuBtn" aria-label="Open menu" aria-expanded="false" aria-controls="navLinks">
+        <span></span><span></span>
+      </button>
+    </div>
+  </nav>
+
+  <div class="container docs">
+    <aside class="docs-side" aria-label="Docs">
+      <p class="docs-group">Getting started</p>
+      <a href="#intro">Intro</a>
+      <a href="#install">Install</a>
+      <a href="#first-run">First run</a>
+      <p class="docs-group">Usage</p>
+      <a href="#modes">Modes</a>
+      <a href="#cli">Terminal app</a>
+      <a href="#approvals">Approvals</a>
+      <a href="#tools">Tools</a>
+      <p class="docs-group">Configure</p>
+      <a href="#models">Models &amp; providers</a>
+      <a href="#settings">Settings file</a>
+      <a href="#data">Where data lives</a>
+      <p class="docs-group">Help</p>
+      <a href="#troubleshooting">Troubleshooting</a>
+    </aside>
+
+    <main id="main" class="docs-body">
+      <section id="intro">
+        <h1>Intro</h1>
+        <p>TermiCursor is an AI coding agent that runs on your machine. Give it a task and it plans the work, edits
+          files, searches your code and runs commands, asking before anything risky. It uses local models through
+          <a href="https://ollama.com" target="_blank" rel="noopener">Ollama</a> by default, so your code stays on
+          your PC.</p>
+        <p>There are two ways to use it, both backed by the same agent:</p>
+        <ul>
+          <li><b>Desktop app</b>: editor, file tree, terminal and agent panel in one window.</li>
+          <li><b>Terminal app</b>: the <code>termicursor</code> command.</li>
+        </ul>
+      </section>
+
+      <section id="install">
+        <h2>Install</h2>
+        <p>First install <a href="https://ollama.com/download" target="_blank" rel="noopener">Ollama</a> and make
+          sure it's running. Requirements: Windows 10/11, 8 GB RAM recommended.</p>
+        <h3>Desktop app</h3>
+        <p>Download the installer from the <a href="https://github.com/MShreyash09/TermiCursor/releases/latest"
+            target="_blank" rel="noopener">latest release</a> and run it. The app updates itself from GitHub.</p>
+        <h3>Terminal app</h3>
+        <p>Needs Python 3.10 or newer.</p>
+        <pre><code>pip install git+https://github.com/MShreyash09/TermiCursor.git</code></pre>
+      </section>
+
+      <section id="first-run">
+        <h2>First run</h2>
+        <ol>
+          <li>Open TermiCursor. The status bar turns green and shows <b>ready</b> once it can reach Ollama.</li>
+          <li>If it shows <b>Models missing</b>, click <b>Install</b>. The default models
+            (<code>qwen2.5-coder:3b</code> and <code>nomic-embed-text</code>) are about 2.2 GB. Or pull them
+            yourself:
+            <pre><code>ollama pull qwen2.5-coder:3b
+ollama pull nomic-embed-text</code></pre>
+          </li>
+          <li>Open a project folder. It gets indexed for search in the background.</li>
+          <li>Type a task in the agent panel, for example <em>"add a /health route to server.py"</em>.</li>
+        </ol>
+        <p class="note">Keep your project in git so every change is easy to review and undo.</p>
+      </section>
+
+      <section id="modes">
+        <h2>Modes</h2>
+        <p>Switch with <kbd>tab</kbd> in the terminal, or the mode switch in the app.</p>
+        <table>
+          <thead><tr><th>Mode</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td><b class="c-ask">Ask</b></td><td>Answers questions. Read-only tools only: it can open and search
+                files, but can't edit or run commands.</td></tr>
+            <tr><td><b class="c-plan">Plan</b></td><td>Writes a step-by-step plan and stops. Edit steps, ask for
+                changes, approve or reject. Nothing is written until you approve.</td></tr>
+            <tr><td><b class="c-build">Build</b></td><td>Plans when the task needs it, then edits files, runs commands
+                and checks the result.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="cli">
+        <h2>Terminal app</h2>
+        <p>Run it inside your project folder:</p>
+        <pre><code>cd my-project
+termicursor</code></pre>
+        <table>
+          <thead><tr><th>Key / command</th><th>Action</th></tr></thead>
+          <tbody>
+            <tr><td><kbd>tab</kbd></td><td>Cycle Build / Plan / Ask</td></tr>
+            <tr><td><code>/build</code> <code>/plan</code> <code>/ask</code></td><td>Pick a mode directly</td></tr>
+            <tr><td><code>/model</code></td><td>Choose the model</td></tr>
+            <tr><td><code>/clear</code></td><td>Clear the screen</td></tr>
+            <tr><td><code>/help</code></td><td>List commands</td></tr>
+            <tr><td><code>/exit</code></td><td>Quit (<code>/quit</code> works too)</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="approvals">
+        <h2>Approvals</h2>
+        <p>The agent pauses and asks you before it:</p>
+        <ul>
+          <li>runs any shell command,</li>
+          <li>deletes a file,</li>
+          <li>writes outside the project folder.</li>
+        </ul>
+        <p>Settings → <b>Auto-approve shell commands</b> skips the prompt for commands, except destructive ones
+          (<code>rm</code>, <code>del</code>, <code>git reset --hard</code>…), which always ask. You can stop a run
+          at any time.</p>
+      </section>
+
+      <section id="tools">
+        <h2>Tools</h2>
+        <p>The agent works one tool call at a time. You see each call as it happens.</p>
+        <table>
+          <thead><tr><th>Tool</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td><code>grep</code>, <code>find_files</code>, <code>list_dir</code></td><td>Find files and text</td></tr>
+            <tr><td><code>search_codebase</code></td><td>Search the project by meaning (falls back to text search if
+                not indexed)</td></tr>
+            <tr><td><code>read_file</code></td><td>Read a file, 200 numbered lines per page</td></tr>
+            <tr><td><code>edit_file</code>, <code>write_file</code>, <code>delete_file</code></td><td>Change files</td></tr>
+            <tr><td><code>run_shell_command</code></td><td>Run builds, tests, scripts</td></tr>
+            <tr><td><code>browser_navigate</code>, <code>browser_click</code>, <code>browser_get_text</code></td><td>Test
+                web apps in Edge. Each session is recorded to a video in Artifacts.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="models">
+        <h2>Models &amp; providers</h2>
+        <p>Pick the provider and model in <b>Settings</b> (or <code>/model</code> in the terminal). Changes apply on
+          the next request, no restart needed.</p>
+        <ul>
+          <li><b>Ollama</b> (default): any model you've pulled. Everything stays local.</li>
+          <li><b>Groq</b>: faster cloud inference. Needs an API key.</li>
+          <li><b>Custom</b>: any OpenAI-compatible API (name, base URL, key, model).</li>
+        </ul>
+        <p class="note warn">With Groq or a custom provider, your prompts and the code the agent reads are sent to
+          that provider.</p>
+      </section>
+
+      <section id="settings">
+        <h2>Settings file</h2>
+        <p>The Settings page writes <code>settings.json</code> in the data folder (see below). You can also edit it
+          by hand:</p>
+        <pre><code>{
+  "llmProvider": "ollama",
+  "ollamaModel": "qwen2.5-coder:3b",
+  "ollamaUrl": "http://localhost:11434",
+  "groqApiKey": "",
+  "groqModel": "llama-3.1-8b-instant",
+  "autoApproveShell": false
+}</code></pre>
+        <p>Environment variables <code>LLM_PROVIDER</code>, <code>OLLAMA_URL</code>, <code>OLLAMA_LLM_MODEL</code>,
+          <code>GROQ_API_KEY</code> and <code>GROQ_MODEL</code> are used when a setting is empty.</p>
+      </section>
+
+      <section id="data">
+        <h2>Where data lives</h2>
+        <p>Everything is stored locally in <code>%LOCALAPPDATA%\Termicursor\Termicursor</code> (override with the
+          <code>TERMICURSOR_USER_DATA</code> environment variable):</p>
+        <ul>
+          <li><code>settings.json</code>: your settings</li>
+          <li><code>local_qdrant\</code>: the search index, one collection per project</li>
+          <li><code>artifacts\</code>: command logs and browser recordings</li>
+        </ul>
+        <p>Desktop app logs: <code>%APPDATA%\Termicursor\logs\main.log</code>.</p>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+        <h3>Status bar says Ollama isn't reachable</h3>
+        <p>Start Ollama (open the app, or run <code>ollama serve</code>) and check it answers at
+          <code>http://localhost:11434</code>. If it runs elsewhere, set <code>ollamaUrl</code>.</p>
+        <h3>Models missing</h3>
+        <p>Click <b>Install</b> in the status bar, or run the <code>ollama pull</code> commands from
+          <a href="#first-run">First run</a>.</p>
+        <h3>Answers are slow or low quality</h3>
+        <p>The default 3B model is chosen to run on most PCs. If you have the RAM/GPU, pull a bigger coder model and
+          select it in Settings, or switch to Groq.</p>
+        <h3>Something else</h3>
+        <p><a href="https://github.com/MShreyash09/TermiCursor/issues" target="_blank" rel="noopener">Open an
+            issue</a> and attach <code>main.log</code>. Security problems: see
+          <a href="https://github.com/MShreyash09/TermiCursor/blob/main/SECURITY.md" target="_blank"
+            rel="noopener">SECURITY.md</a>.</p>
+      </section>
+    </main>
+  </div>
+
+  <footer class="footer">
+    <div class="container footer-bottom">&copy; 2026 TermiCursor</div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+
+</html>

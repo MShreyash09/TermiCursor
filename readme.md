@@ -8,6 +8,12 @@ running commands and streams its plan, thoughts and results live. Three modes: *
 written) and **Build** (plans if needed, then codes). With the default Ollama setup,
 your code, embeddings and inference stay on your PC.
 
+# GUI Look
+![alt text](landing-page/public/asset/app.png)
+
+# Terminal Look
+![alt text](image.png)
+
 ## 🚀 Download
 
 **[Download the latest Windows installer](https://github.com/MShreyash09/TermiCursor/releases/latest)**

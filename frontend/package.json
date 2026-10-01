@@ -73,5 +73,8 @@
     "react-markdown": "^10.1.0",
     "react-resizable-panels": "^4.11.2",
     "xterm": "^5.3.0"
+  },
+  "overrides": {
+    "dompurify": "3.4.16"
   }
 }

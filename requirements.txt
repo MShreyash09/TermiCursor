@@ -23,3 +23,10 @@ prompt_toolkit==3.0.53
 questionary==2.1.1
 # Optional: `pip install langfuse==4.13.2` enables LLM tracing in core/agent/llm_client.py.
 # Deliberately unpinned here so a default install stays offline-only.
+# Security floors for transitive deps (pip-audit / Dependabot advisories, 2026-10).
+anyio>=4.14.2
+h2>=4.4.1
+hpack>=4.2.0
+langsmith>=0.8.18
+pydantic-settings>=2.14.2
+urllib3>=2.8.0

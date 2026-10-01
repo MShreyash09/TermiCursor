@@ -6,7 +6,7 @@ on:
 
 jobs:
   test:
-    # The app ships for Windows only, so test where it runs.
+    # The app ships for Windows only, mac & linux will be shipped later.
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4

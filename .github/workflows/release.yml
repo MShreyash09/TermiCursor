@@ -40,4 +40,8 @@ jobs:
           npm ci
           npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
           npm run build
+          # Create the draft first: electron-builder uploads in parallel and, with no release yet,
+          # each upload makes its own draft (v0.1.0 ended up split across two).
+          gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "TermiCursor ${GITHUB_REF_NAME#v}" --notes "" \
+            || gh release view "$GITHUB_REF_NAME" > /dev/null
           npx electron-builder --win --publish always

@@ -93,7 +93,7 @@
 - Playwright drives the installed Edge (incl. video recording).
 
 ### Needs you (can't be done from code)
-- **Rotate the Groq and Langfuse keys** (deferred by you): they're in pushed git history (`origin/new`, `origin/research`, older `main`). Then scrub history or publish from a fresh repo.
+- **Scrub git history (or publish from a fresh repo)**: the *old* Groq and Langfuse keys are still in pushed history (`origin/new`, `origin/research`, older `main`). Both keys were rotated on 2026-09-30 and the replacements verified live, but the old keys were **not** tested and may still be active — rotating does not revoke them on either provider. Confirm they are revoked in the Groq and Langfuse dashboards, then scrub history before the repo goes public.
 - **Make the repo (or a releases repo) public** so downloads, auto-update, `pip install git+…` and the landing page's GitHub links work.
 - **Private vulnerability reporting**: GitHub only offers it on public repos, so it appears after the repo is public (Settings → Advanced Security → Private vulnerability reporting → Enable).
 - **Code signing** for the installer (SmartScreen warning).
@@ -150,3 +150,43 @@
 - Added three Mermaid diagrams (GitHub renders them): system overview, how a request runs (modes, plan review, ReAct step loop, trust gate, grounding), indexing and search. All three were checked by rendering with mermaid.js in light and dark themes.
 - Added a component table (part, folder, role) and fixed stale claims (status bar wording, cloud providers, indexed file types, per-mode routing).
 - Added a References section: official docs for every runtime piece plus the agent-design sources (ReAct, RAG, Cursor, Claude Code, aider, Antigravity, opencode). All 50 external links checked (HTTP 200); the repo's own Releases link 404s until the repo is public.
+
+## 2026-09-30 (round 8): key rotation + Langfuse tracing
+
+### ✅ Done
+- **Groq and Langfuse keys rotated** (the round-6 "needs you" item). Both verified live: Langfuse
+  `auth_check()` against `cloud.langfuse.com` passes, Groq `/v1/models` returns 200. `.env` is
+  untracked and gitignored. History scrub is still open (see round 6 "Needs you").
+- **Langfuse tracing of agent LLM calls** (`core/agent/llm_client.py`). Reverses the round-5 decision to
+  keep Langfuse research-only, because there was no way to see local-model latency in a real run.
+  - One chokepoint: `chat()` wraps every call in a Langfuse generation. `generate()` delegates to it, so
+    router, planner and executor are all covered by one span.
+  - Records latency, model, provider, token counts, and for Ollama the `load` vs `eval` duration split
+    plus derived tok/s — a slow first call is model load, not slow inference, and only that split says so.
+  - `LLMClient(role=...)` labels spans `llm.router` / `llm.planner` / `llm.executor`, so per-stage latency
+    is separable even when all three roles share one model.
+  - **Prompt text is not sent by default.** Prompts here carry the user's source code; only sizes, counts
+    and timings go out. `LANGFUSE_TRACE_PROMPTS=1` opts into full text.
+  - Optional and fail-safe: `langfuse` is deliberately *not* in `requirements.txt`, tracing is off unless
+    both keys are set, and any tracing error is swallowed rather than failing an agent turn. A default
+    install stays offline-only.
+  - `.env` is read for `LANGFUSE_*` **only** (via `dotenv_values`, real env wins). Nothing else in the app
+    loads `.env`, and making it authoritative would have silently switched the provider to Groq, since
+    this `.env` sets `LLM_PROVIDER=groq` while `config.py` reads that as a fallback.
+  - Also fixes a standing trap: this repo names the host `LANGFUSE_BASE_URL`, but the SDK only reads
+    `LANGFUSE_HOST` — unmapped it defaults to the US cloud and auth fails with no obvious cause.
+- **Repo hygiene**: `scratch/` is now gitignored alongside `archive/`, and the tracked `scratch/langfuse-skills`
+  gitlink (mode 160000, no `.gitmodules` — clones got an empty dir and `git submodule update` failed) plus the
+  one-off patch scripts were untracked. The round-5 cleanup had copied these into `archive/` rather than moving
+  them, so they were still in the repo.
+- **Tests**: `tests/test_llm_tracing.py` (6 tests, no network) covers the tracing-off no-op path, that a broken
+  Langfuse cannot fail a turn, the tok/s and ns→ms math, and that masked spans leak no prompt text.
+  `tests/test_config_reload.py` updated: its fake `_chat_openai_compatible` now returns the
+  `(text, usage, extras)` tuple that `chat()` unpacks. Suite: 64 passed.
+  `scratch/langfuse_check.py` is the live end-to-end check (auth + 3 traced local calls + latency summary).
+
+### Known gaps
+- `tests/live_smoke_test.py` (2 tests) fails on both old and new code: `pytest-asyncio` isn't installed.
+  Pre-existing, unrelated to tracing.
+- Tracing has no session/trace grouping yet — each LLM call is its own trace rather than one trace per
+  agent turn. Wiring `AgentSession.id` in as a Langfuse session would group them.

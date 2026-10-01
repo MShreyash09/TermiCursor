@@ -54,5 +54,8 @@ Local-LLM agentic coding assistant (Ollama by default, Groq optional). Python ba
 - Logs (packaged): `%APPDATA%/Termicursor/logs/main.log`.
 
 ## Notes / gotchas
-- Groq/Langfuse keys are in pushed git history; `.env` removal is staged but not committed. Keys must be rotated.
+- Groq/Langfuse keys were rotated on 2026-09-30 and the new ones verified live; `.env` is untracked and
+  gitignored. The *old* keys remain in pushed git history — scrub or republish before going public.
+- Agent LLM calls are traced to Langfuse when `LANGFUSE_*` keys are present (`core/agent/llm_client.py`).
+  Optional dep, off by default, and prompt text is withheld unless `LANGFUSE_TRACE_PROMPTS=1`.
 - MIT licensed (`LICENSE`).

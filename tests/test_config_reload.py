@@ -39,7 +39,8 @@ def test_custom_provider_routes_to_its_openai_compatible_endpoint(tmp_path, monk
 
     async def fake(self, url, key, model, messages, temperature, label):
         calls.append((url, key, model, label))
-        return "ok"
+        # (text, token usage, provider extras) — the contract chat() unpacks.
+        return "ok", {"input": 1, "output": 1}, {}
 
     monkeypatch.setattr(llm_client.LLMClient, "_chat_openai_compatible", fake)
     assert asyncio.run(llm_client.LLMClient().chat([{"role": "user", "content": "hi"}])) == "ok"

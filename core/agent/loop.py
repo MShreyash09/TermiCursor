@@ -96,9 +96,9 @@ class AgentLoop:
         self.session = session
         # For backward compatibility, if a single llm is provided, use it for all roles.
         # Otherwise, instantiate separate clients for each role based on config.
-        self.router_llm = llm or LLMClient(model=ROUTER_MODEL)
-        self.planner_llm = llm or LLMClient(model=PLANNER_MODEL)
-        self.executor_llm = llm or LLMClient(model=EXECUTOR_MODEL)
+        self.router_llm = llm or LLMClient(model=ROUTER_MODEL, role="router")
+        self.planner_llm = llm or LLMClient(model=PLANNER_MODEL, role="planner")
+        self.executor_llm = llm or LLMClient(model=EXECUTOR_MODEL, role="executor")
         
         self.llm = self.executor_llm # Alias for simplicity in some places
         self.artifacts = ArtifactStore(session.id)

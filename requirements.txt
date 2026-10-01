@@ -21,3 +21,5 @@ playwright==1.61.0
 rich==13.9.4
 prompt_toolkit==3.0.53
 questionary==2.1.1
+# Optional: `pip install langfuse==4.13.2` enables LLM tracing in core/agent/llm_client.py.
+# Deliberately unpinned here so a default install stays offline-only.

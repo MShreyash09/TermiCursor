@@ -71,3 +71,14 @@ def test_dev_mode_blocks_other_sites(dev):
     with pytest.raises(WebSocketDisconnect):
         with dev.websocket_connect("/ws/agent/nope", headers=EVIL):
             pass
+
+
+def test_artifact_route_rejects_path_traversal(dev):
+    # session_id/filename come from the URL; "..\" must not escape the artifacts dir
+    # (e.g. to read settings.json, which can hold an API key).
+    from core.config import ARTIFACTS_DIR, safe_join
+    for bad in ("..", r"..\..\x", "/etc", r"C:\Windows"):
+        with pytest.raises(ValueError):
+            safe_join(ARTIFACTS_DIR, bad)
+    assert dev.get("/sessions/..%5C/artifacts/settings.json").status_code == 404
+    assert dev.get("/sessions/abc123/artifacts/..%5C..%5Csettings.json").status_code == 404

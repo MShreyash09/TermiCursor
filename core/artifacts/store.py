@@ -2,7 +2,7 @@ import json
 import os
 from typing import Optional
 
-from core.config import ARTIFACTS_DIR
+from core.config import ARTIFACTS_DIR, safe_join
 from core.persistence import db
 from .models import Artifact
 
@@ -14,7 +14,7 @@ class ArtifactStore:
 
     def __init__(self, session_id: str):
         self.session_id = session_id
-        self.dir = os.path.join(ARTIFACTS_DIR, session_id)
+        self.dir = safe_join(ARTIFACTS_DIR, session_id)  # session_id arrives from the URL
         os.makedirs(self.dir, exist_ok=True)
 
     def _persist(self, artifact: Artifact) -> Artifact:
@@ -83,9 +83,8 @@ class ArtifactStore:
         return db.list_artifacts(self.session_id)
 
     def read_file(self, filename: str) -> Optional[bytes]:
-        safe = os.path.basename(filename)
-        full = os.path.join(self.dir, safe)
-        if not os.path.isfile(full):
+        full = self.path_for(filename)
+        if full is None:
             return None
         with open(full, "rb") as f:
             return f.read()
@@ -93,6 +92,8 @@ class ArtifactStore:
     def path_for(self, filename: str) -> Optional[str]:
         """Absolute path for a file, for cases (e.g. video) that need streaming
         with Range support rather than a full in-memory read."""
-        safe = os.path.basename(filename)
-        full = os.path.join(self.dir, safe)
+        try:
+            full = safe_join(self.dir, os.path.basename(filename))
+        except ValueError:
+            return None
         return full if os.path.isfile(full) else None

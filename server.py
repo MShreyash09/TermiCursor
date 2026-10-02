@@ -144,7 +144,8 @@ async def pull_model(request: PullRequest):
                 if chunk:
                     yield chunk
         except Exception as e:
-            yield f'{{"error": "{str(e)}"}}\n'.encode("utf-8")
+            print(f"Model pull failed: {e!r}", file=sys.stderr)  # details stay in the backend log
+            yield b'{"error": "Model download failed. Is Ollama running?"}\n'
 
     return StreamingResponse(stream_pull(), media_type="application/x-ndjson")
 
@@ -193,7 +194,10 @@ async def get_artifacts(session_id: str):
 
 @app.get("/sessions/{session_id}/artifacts/{filename}")
 async def get_artifact_file(session_id: str, filename: str):
-    store = ArtifactStore(session_id)
+    try:
+        store = ArtifactStore(session_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Artifact file not found")
     if filename.endswith(".webm"):
         # FileResponse supports Range requests, which the browser needs to seek/scrub video.
         path = store.path_for(filename)

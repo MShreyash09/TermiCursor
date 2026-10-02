@@ -21,6 +21,16 @@ DB_PATH = os.path.join(APP_DATA_DIR, "agent.db")
 os.makedirs(ARTIFACTS_DIR, exist_ok=True)
 
 
+def safe_join(base: str, name: str) -> str:
+    """Join an untrusted name (session id, artifact filename) onto base, refusing
+    anything that resolves outside it (`..`, absolute paths, `..\\` on Windows)."""
+    base = os.path.normpath(base)
+    path = os.path.normpath(os.path.join(base, name))
+    if not path.startswith(base + os.sep):
+        raise ValueError(f"unsafe path: {name!r}")
+    return path
+
+
 def load_settings():
     if os.path.exists(SETTINGS_PATH):
         try:

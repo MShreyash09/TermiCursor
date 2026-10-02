@@ -19,7 +19,7 @@ import re
 import threading
 import time
 
-from core.config import APP_DATA_DIR
+from core.config import APP_DATA_DIR, safe_join
 from core.persistence import db
 
 MEMORY_DIR = os.path.join(APP_DATA_DIR, "project_memory")
@@ -42,7 +42,7 @@ def folder_key(project_path: str) -> str:
 
 
 def _path_for(project_path: str) -> str:
-    return os.path.join(MEMORY_DIR, f"{folder_key(project_path)}.json")
+    return safe_join(MEMORY_DIR, f"{folder_key(project_path)}.json")
 
 
 def _load(project_path: str) -> dict:

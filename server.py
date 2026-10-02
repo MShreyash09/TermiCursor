@@ -15,6 +15,7 @@ from core import __version__, config
 from core.persistence import db
 from core.agent.session import AgentSession, SESSIONS
 from core.agent.loop import AgentLoop
+from core.agent.llm_client import QUOTA
 from core.artifacts.store import ArtifactStore
 from core.memory import project_memory
 import rag
@@ -127,7 +128,7 @@ async def ingest(request: IngestRequest):
 async def status():
     config.reload_settings()  # pick up Settings-page changes (model, Ollama URL)
     return {**rag.get_ollama_status(), "provider": config.LLM_PROVIDER,
-            "model": config.active_model(), "version": __version__}
+            "model": config.active_model(), "version": __version__, "quota": QUOTA}
 
 
 @app.post("/pull")

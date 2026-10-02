@@ -75,3 +75,12 @@ export function StatusDot({ color, pulse }: { color: string; pulse?: boolean }) 
     </span>
   );
 }
+
+/** "12.3k tok · 28/30 req left" from a provider's /status quota entry. */
+export function quotaText(q?: Record<string, any>): string {
+  if (!q) return 'no usage yet';
+  const tok = q.tokens >= 1000 ? `${(q.tokens / 1000).toFixed(1)}k` : `${q.tokens}`;
+  const req = q['remaining-requests'] != null
+    ? ` · ${q['remaining-requests']}${q['limit-requests'] ? `/${q['limit-requests']}` : ''} req left` : '';
+  return `${tok} tok${req}`;
+}

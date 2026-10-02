@@ -25,6 +25,7 @@
       "output": "release"
     },
     "win": {
+      "icon": "electron/icon.ico",
       "target": [
         "nsis"
       ]

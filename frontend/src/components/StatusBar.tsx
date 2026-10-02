@@ -1,5 +1,5 @@
 import { Download, RotateCw } from 'lucide-react';
-import { StatusDot } from './ui';
+import { StatusDot, quotaText } from './ui';
 
 interface StatusBarProps {
   backendStatus: any;
@@ -53,6 +53,7 @@ export default function StatusBar({ backendStatus, pullProgress, isPullingModels
       <span className="flex items-center gap-2 text-muted" title="Backend and model ready">
         <StatusDot color={GREEN} /> <span className="text-primary">ready</span>
         {s.model && <><span className="text-dim">·</span> <span className="text-fg">{s.model}</span> <span className="text-dim">{s.provider}</span></>}
+        {s.quota?.[s.provider] && <span className="text-dim" title={s.quota[s.provider]['reset-requests'] ? `requests reset in ${s.quota[s.provider]['reset-requests']}` : undefined}>· {quotaText(s.quota[s.provider])}</span>}
       </span>
     );
   };

@@ -1,6 +1,14 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { Type, Terminal, Cpu, Keyboard, Trash2, Plus, Search, Check, ShieldCheck } from 'lucide-react';
-import { Kbd } from './ui';
+import { Kbd, quotaText } from './ui';
+
+// Official OpenAI-compatible endpoints; the user only pastes a key.
+const PRESETS = [
+  { name: 'Gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-2.5-flash' },
+  { name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
+  { name: 'Anthropic', baseUrl: 'https://api.anthropic.com/v1', model: 'claude-sonnet-5-5' },
+  { name: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', model: 'openrouter/auto' },
+];
 
 const inputClass =
   'bg-background border border-border-strong rounded-md px-2.5 py-1.5 text-[12.5px] text-fg placeholder:text-dim focus:outline-none focus:border-primary/60';
@@ -31,7 +39,7 @@ const SHORTCUTS: [string, string][] = [
   ['Ctrl+S', 'Save the current file'],
 ];
 
-export default function SettingsPage() {
+export default function SettingsPage({ quota }: { quota?: Record<string, any> }) {
   const [settings, setSettings] = useState({
     fontSize: '14',
     fontFamily: 'Cascadia Mono',
@@ -145,12 +153,12 @@ export default function SettingsPage() {
         },
         {
           label: 'Groq model',
-          description: 'Model to use on Groq.',
+          description: `Model to use on Groq. Usage: ${quotaText(quota?.groq)}`,
           control: <Dropdown value={settings.groqModel || 'llama-3.1-8b-instant'} options={['llama-3.1-8b-instant', 'llama-3.3-70b-versatile']} onChange={(v) => updateSetting('groqModel', v)} />,
         },
         {
           label: 'Custom API providers',
-          description: 'OpenAI-compatible APIs (DeepSeek, Together, GLM, Kimi…). Select one as the provider above.',
+          description: 'OpenAI-compatible APIs (Gemini, OpenAI, Anthropic, OpenRouter, DeepSeek…). Pick a preset, paste your key, then select it as the provider above.',
           wide: true,
           control: (
             <div className="flex flex-col gap-2 w-full">
@@ -159,10 +167,17 @@ export default function SettingsPage() {
                   <div className="min-w-0">
                     <div className="text-[12.5px] text-fg">{p.name}</div>
                     <div className="text-[11px] text-dim font-mono truncate">{p.model} · {p.baseUrl || 'api.openai.com/v1'}</div>
+                    <div className="text-[11px] text-muted font-mono">{quotaText(quota?.[p.name.toLowerCase()])}</div>
                   </div>
                   <button onClick={() => removeCustomProvider(idx)} title="Remove" className="p-1 text-dim hover:text-danger"><Trash2 size={13} /></button>
                 </div>
               ))}
+              <div className="flex flex-wrap gap-1.5">
+                {PRESETS.map(pr => (
+                  <button key={pr.name} onClick={() => setNewProvider(p => ({ ...p, ...pr }))}
+                    className="rounded-md border border-border-strong px-2 py-0.5 text-[11.5px] text-muted hover:text-fg hover:border-primary/40">{pr.name}</button>
+                ))}
+              </div>
               <div className="grid grid-cols-2 gap-2 rounded-md border border-dashed border-border-strong p-2.5">
                 <input placeholder="Name (e.g. DeepSeek)" value={newProvider.name} onChange={e => setNewProvider(p => ({ ...p, name: e.target.value }))} className={inputClass} />
                 <input placeholder="Model (e.g. deepseek-chat)" value={newProvider.model} onChange={e => setNewProvider(p => ({ ...p, model: e.target.value }))} className={inputClass} />

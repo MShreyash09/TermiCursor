@@ -137,8 +137,9 @@ function App() {
         .catch(() => null);
       if (cancelled) return;
       if (data) setBackendStatus(data);
-      // Fast while the backend boots, slower while waiting on Ollama/models.
-      if (data?.status !== 'ok') timer = window.setTimeout(poll, data ? 5000 : 1000);
+      // Fast while the backend boots, slower while waiting on Ollama/models, then
+      // every 15s to keep provider quota in the status bar fresh.
+      timer = window.setTimeout(poll, data?.status === 'ok' ? 15000 : data ? 5000 : 1000);
     };
     poll();
     return () => { cancelled = true; window.clearTimeout(timer); };
@@ -317,7 +318,7 @@ function App() {
   // Determine what to render in the center panel
   const renderCenterContent = () => {
     if (activeView === 'profile') return <ProfilePage backendPort={backendPort} />;
-    if (activeView === 'settings') return <SettingsPage />;
+    if (activeView === 'settings') return <SettingsPage quota={backendStatus?.quota} />;
     if (!projectPath || openFiles.length === 0) {
       return (
         <WelcomeScreen onOpenFolder={handleOpenFolder} recentFolders={recentFolders} onOpenRecentFolder={openProject}

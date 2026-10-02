@@ -20,6 +20,12 @@ from core import config
 
 GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 
+# Per-provider usage + rate-limit headers from the last response, served by /status.
+# ponytail: in-memory only, resets on app restart; persist to db if users want history.
+QUOTA: dict[str, dict] = {}
+_RATE_HEADERS = ("x-ratelimit-limit-requests", "x-ratelimit-remaining-requests",
+                 "x-ratelimit-limit-tokens", "x-ratelimit-remaining-tokens", "x-ratelimit-reset-requests")
+
 # ── Optional Langfuse tracing ────────────────────────────────────────────────
 # langfuse is not in requirements.txt: absent, unconfigured, or broken, every
 # path here degrades to a no-op rather than failing an agent turn.
@@ -132,8 +138,13 @@ class LLMClient:
                 if resp.status >= 400:
                     raise RuntimeError(f"{label} API error {resp.status}: {(await resp.text())[:300]}")
                 data = await resp.json()
+                rate = {h[len("x-ratelimit-"):]: resp.headers[h] for h in _RATE_HEADERS if h in resp.headers}
         u = data.get("usage") or {}
         usage = {"input": u.get("prompt_tokens", 0), "output": u.get("completion_tokens", 0)}
+        q = QUOTA.setdefault(label.lower(), {"tokens": 0, "requests": 0})
+        q["tokens"] += usage["input"] + usage["output"]
+        q["requests"] += 1
+        q.update(rate)
         return data["choices"][0]["message"]["content"] or "", usage, {}
 
     # ── Tracing helpers: must never raise into an agent turn ──

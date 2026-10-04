@@ -1,4 +1,5 @@
-"""Codebase ingestion + retrieval.
+"""'
+Codebase ingestion + retrieval.
 
 Trimmed to retrieval-only: chat/query execution and file-edit tag parsing now
 live in core/agent/ (a real, validated tool-calling loop) instead of the old

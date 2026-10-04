@@ -1,4 +1,5 @@
-"""CLI entry point. `ingest` builds the Qdrant index; `run` drives the agent
+"""
+CLI entry point. `ingest` builds the Qdrant index; `run` drives the agent
 loop headlessly (planning + tool-calling), replacing the old `chat`/`query`
 RAG-only commands now that the assistant is a real tool-calling agent.
 """

@@ -12,7 +12,7 @@ your code, embeddings and inference stay on your PC.
 ![alt text](landing-page/public/asset/app.png)
 
 # Terminal Look
-![alt text](image.png)
+![alt text](landing-page/public/asset/cli-welcome.png)
 
 ## 🚀 Download
 
@@ -195,6 +195,41 @@ splits each file with LangChain's language-aware splitter so functions and class
 together, embeds the chunks with `nomic-embed-text`, and stores them in a local Qdrant
 collection named after the folder's path hash, so projects never mix. Reopening a folder
 reuses its index. Exact-match search (`grep`) works without any index.
+
+### Skills and MCP servers (connectors)
+
+**Skills** are instruction packs, one folder each with a `SKILL.md`:
+
+```
+<project>/.termicursor/skills/<name>/SKILL.md      (this project only)
+<app data>/skills/<name>/SKILL.md                  (all projects)
+```
+
+```markdown
+---
+name: api-style
+description: How this repo writes FastAPI endpoints
+---
+Use pydantic request models, return dicts, ...
+```
+
+**MCP servers** go in `settings.json` under `mcpServers`, in the same format Claude Desktop uses.
+Each entry is either a command (stdio) or a `url` (streamable HTTP):
+
+```json
+"mcpServers": {
+  "github": {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-github"],
+             "env": {"GITHUB_PERSONAL_ACCESS_TOKEN": "..."}},
+  "docs":   {"url": "https://example.com/mcp"}
+}
+```
+
+Only skill names, skill descriptions and server names go in the prompt. The agent reads a
+skill's text with `load_skill`, finds an MCP tool with `mcp_find`, and runs it with
+`mcp_call`, which asks for your approval first. So adding more skills or servers barely
+grows the prompt. Tool results do take context, so set `OLLAMA_NUM_CTX` to 16384–32768
+when you use MCP. Multi-step skill/MCP work needs a model of about 14B parameters or more
+(for example `qwen2.5-coder:14b` or `devstral`). 3B models manage basic file edits only.
 
 ---
 

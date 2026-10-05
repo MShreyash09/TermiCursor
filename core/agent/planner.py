@@ -5,6 +5,7 @@ import re
 from .llm_client import LLMClient
 from .prompts import PLANNER_PROMPT
 from core.memory import project_memory
+from core.tools.skill_tool import extensions_text
 import rag
 
 
@@ -25,7 +26,8 @@ async def decompose_task(goal: str, project_path: str, llm: LLMClient) -> list[s
     """
     tree = rag.get_project_tree(project_path)
     memories = project_memory.get_context(project_path)
-    prompt = PLANNER_PROMPT.format(project_tree=tree, goal=goal, memories=memories or "(none)")
+    prompt = PLANNER_PROMPT.format(project_tree=tree, goal=goal, memories=memories or "(none)",
+                                   extensions=extensions_text(project_path))
     raw = await llm.generate(prompt, temperature=0.2)
 
     try:

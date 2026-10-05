@@ -318,7 +318,7 @@ function App() {
   // Determine what to render in the center panel
   const renderCenterContent = () => {
     if (activeView === 'profile') return <ProfilePage backendPort={backendPort} />;
-    if (activeView === 'settings') return <SettingsPage quota={backendStatus?.quota} />;
+    if (activeView === 'settings') return <SettingsPage quota={backendStatus?.quota} port={backendPort} />;
     if (!projectPath || openFiles.length === 0) {
       return (
         <WelcomeScreen onOpenFolder={handleOpenFolder} recentFolders={recentFolders} onOpenRecentFolder={openProject}

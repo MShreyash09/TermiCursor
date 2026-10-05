@@ -4,6 +4,8 @@ from .grep_tools import GrepTool, FindFilesTool
 from .shell_tool import RunShellCommandTool
 from .search_tool import SearchCodebaseTool
 from .browser_tools import BrowserNavigateTool, BrowserClickTool, BrowserGetTextTool
+from .mcp_tools import McpFindTool, McpCallTool, servers
+from .skill_tool import LoadSkillTool, list_skills
 
 
 def build_registry(project_path: str, session_id: str, video_dir: str) -> dict[str, Tool]:
@@ -28,6 +30,11 @@ def build_registry(project_path: str, session_id: str, video_dir: str) -> dict[s
         BrowserClickTool(session_id, video_dir),
         BrowserGetTextTool(session_id, video_dir),
     ]
+    # Only when installed, so the prompt is unchanged for users without skills/MCP.
+    if list_skills(project_path):
+        tools.append(LoadSkillTool(project_path))
+    if servers():
+        tools += [McpFindTool(), McpCallTool()]
     return {t.name: t for t in tools}
 
 

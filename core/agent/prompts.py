@@ -16,6 +16,7 @@ Rules:
 
 Relevant memory from past conversations:
 {memories}
+{extensions}
 
 Project file tree:
 {project_tree}
@@ -53,6 +54,7 @@ Project files:
 
 Relevant memory from past sessions:
 {memories}
+{extensions}
 """
 
 EXECUTOR_SYSTEM_PROMPT = """You are TermiCursor, an autonomous coding agent working inside the user's project.

@@ -18,6 +18,7 @@ from core.agent.loop import AgentLoop
 from core.agent.llm_client import QUOTA
 from core.artifacts.store import ArtifactStore
 from core.memory import project_memory
+from core.tools import skill_tool
 import rag
 
 if sys.platform.startswith("win"):
@@ -105,6 +106,11 @@ class ApproveRequest(BaseModel):
     approved: bool
 
 
+class SkillRequest(BaseModel):
+    description: str = ""
+    body: str = ""
+
+
 class OpenProjectRequest(BaseModel):
     project_path: str
 
@@ -158,6 +164,30 @@ async def open_project(request: OpenProjectRequest):
     time a folder is seen, or loads the saved one so the agent can continue
     where prior sessions left off."""
     return project_memory.open_project(request.project_path)
+
+
+# ── Skills (global SKILL.md packs, edited from the Settings page) ──
+@app.get("/skills")
+async def list_skills():
+    return skill_tool.global_skills()
+
+
+@app.put("/skills/{name}")
+async def save_skill(name: str, request: SkillRequest):
+    try:
+        skill_tool.save_skill(name, request.description, request.body)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True}
+
+
+@app.delete("/skills/{name}")
+async def delete_skill(name: str):
+    try:
+        skill_tool.delete_skill(name)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True}
 
 
 # ── Agent sessions (replaces the old /query + /ws/chat tag-parsing flow) ──

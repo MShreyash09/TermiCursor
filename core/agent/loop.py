@@ -29,6 +29,7 @@ from core.tools import trust_gate
 from core.tools.base import Tool, ToolResult
 from core.tools.registry import build_registry, tools_schema_text
 from core.tools.browser_tools import close_browser_session
+from core.tools.skill_tool import extensions_text
 from core.memory import project_memory
 import rag
 from .context import looks_project_specific, mentioned_files, wants_change
@@ -47,7 +48,7 @@ from core.artifacts.store import ArtifactStore
 # NOT dedup run_shell_command — re-running a build/test command after an edit is
 # a legitimate, common pattern.
 _DEDUP_TOOLS = {"write_file", "edit_file", "delete_file"}
-READ_ONLY_TOOLS = {"read_file", "list_dir", "search_codebase", "grep", "find_files"}
+READ_ONLY_TOOLS = {"read_file", "list_dir", "search_codebase", "grep", "find_files", "load_skill", "mcp_find"}
 ATTACH_LINES = 100        # lines of each auto-attached file (the model can read_file for more)
 KEEP_FULL_RESULTS = 2     # older tool results get shortened so the context window doesn't overflow
 
@@ -273,6 +274,7 @@ class AgentLoop:
         system = template.format(
             tools=tools_schema_text(self.tools), goal=s.goal, step=step.description,
             memories=memories, files=_file_list(s.project_path),
+            extensions=extensions_text(s.project_path),
             mode_rules=ASK_MODE_RULES if s.agent == "ask" else "",
         )
 

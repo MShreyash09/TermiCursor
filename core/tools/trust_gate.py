@@ -33,6 +33,7 @@ _DESTRUCTIVE_RE = re.compile("|".join(_DESTRUCTIVE_SHELL), re.IGNORECASE)
 _ALWAYS_SAFE = {
     "read_file", "list_dir", "search_codebase", "grep", "find_files",
     "browser_navigate", "browser_click", "browser_get_text",
+    "load_skill", "mcp_find",
 }
 
 

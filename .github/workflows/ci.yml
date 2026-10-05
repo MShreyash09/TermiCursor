@@ -1,5 +1,8 @@
 name: CI
 
+# Every push and PR runs the whole offline test suite, so a new feature can't silently
+# break an old one. It also fails when backend code changes without a test change,
+# so every new feature has to come with its own tests.
 on:
   push:
   pull_request:
@@ -13,6 +16,34 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history, so the test check below can diff against the base
+
+      - name: Require tests with backend changes
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="origin/${{ github.base_ref }}"
+          else
+            base="${{ github.event.before }}"
+          fi
+          # A new branch or the first push has no usable base: nothing to compare.
+          if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            echo "No base commit to compare against; skipping."; exit 0
+          fi
+          if git log --format=%B "$base..HEAD" | grep -q "\[skip-test-check\]"; then
+            echo "[skip-test-check] found in a commit message; skipping."; exit 0
+          fi
+          changed=$(git diff --name-only "$base...HEAD")
+          src=$(echo "$changed" | grep -E '^(core/.*|server|main|cli|rag)\.py$' || true)
+          tests=$(echo "$changed" | grep -E '^tests/test_.*\.py$' || true)
+          if [ -n "$src" ] && [ -z "$tests" ]; then
+            echo "::error::Backend code changed but no tests/test_*.py was added or updated:"
+            echo "$src"
+            echo "Add a test for the change, or put [skip-test-check] in a commit message for refactors/docs-only edits."
+            exit 1
+          fi
+          echo "OK"
 
       - uses: actions/setup-python@v5
         with:

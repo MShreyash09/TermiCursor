@@ -1,6 +1,14 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react';
-import { Type, Terminal, Cpu, Keyboard, Trash2, Plus, Search, Check, ShieldCheck } from 'lucide-react';
+import { Type, Terminal, Cpu, Keyboard, Trash2, Plus, Search, Check, ShieldCheck, Plug } from 'lucide-react';
 import { Kbd, quotaText } from './ui';
+import { backendUrl } from '../backend';
+
+interface Skill { name: string; description: string; body: string }
+const EMPTY_SKILL: Skill = { name: '', description: '', body: '' };
+const MCP_EXAMPLE = `{
+  "github": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-github"], "env": { "GITHUB_PERSONAL_ACCESS_TOKEN": "..." } },
+  "docs": { "url": "https://example.com/mcp" }
+}`;
 
 // Official OpenAI-compatible endpoints; the user only pastes a key.
 const PRESETS = [
@@ -39,7 +47,7 @@ const SHORTCUTS: [string, string][] = [
   ['Ctrl+S', 'Save the current file'],
 ];
 
-export default function SettingsPage({ quota }: { quota?: Record<string, any> }) {
+export default function SettingsPage({ quota, port }: { quota?: Record<string, any>; port?: number }) {
   const [settings, setSettings] = useState({
     fontSize: '14',
     fontFamily: 'Cascadia Mono',
@@ -58,7 +66,13 @@ export default function SettingsPage({ quota }: { quota?: Record<string, any> })
     groqModel: 'llama-3.1-8b-instant',
     customProviders: [] as any[],
     autoApproveShell: false,
+    mcpServers: {} as Record<string, any>,
   });
+  const [mcpDraft, setMcpDraft] = useState('');
+  const [mcpError, setMcpError] = useState('');
+  const [skills, setSkills] = useState<Skill[]>([]);
+  const [editing, setEditing] = useState<Skill | null>(null);  // skill open in the editor (new or existing)
+  const [skillError, setSkillError] = useState('');
   const [newProvider, setNewProvider] = useState({ name: '', apiKey: '', baseUrl: '', model: '' });
   const [providerError, setProviderError] = useState('');
   const [availableOllamaModels, setAvailableOllamaModels] = useState<string[]>([]);
@@ -69,8 +83,52 @@ export default function SettingsPage({ quota }: { quota?: Record<string, any> })
   useEffect(() => {
     (window as any).electronAPI?.loadSettings?.().then((loaded: any) => {
       if (loaded && Object.keys(loaded).length > 0) setSettings(prev => ({ ...prev, ...loaded }));
+      const servers = loaded?.mcpServers;
+      setMcpDraft(servers && Object.keys(servers).length ? JSON.stringify(servers, null, 2) : '');
     });
   }, []);
+
+  const loadSkills = () => {
+    if (!port) return;
+    fetch(backendUrl(port, '/skills')).then(r => r.json()).then(setSkills).catch(() => setSkills([]));
+  };
+  useEffect(loadSkills, [port]);
+
+  const saveMcp = () => {
+    try {
+      const parsed = mcpDraft.trim() ? JSON.parse(mcpDraft) : {};
+      if (typeof parsed !== 'object' || Array.isArray(parsed) || parsed === null) throw new Error('Must be a JSON object of servers.');
+      for (const [name, cfg] of Object.entries<any>(parsed)) {
+        if (!cfg || (typeof cfg.command !== 'string' && typeof cfg.url !== 'string')) throw new Error(`"${name}" needs a "command" or a "url".`);
+      }
+      setMcpError('');
+      updateSetting('mcpServers', parsed);
+    } catch (e: any) {
+      setMcpError(e.message || 'Invalid JSON.');
+    }
+  };
+
+  const saveSkill = async () => {
+    if (!editing || !port) return;
+    const res = await fetch(backendUrl(port, `/skills/${encodeURIComponent(editing.name)}`), {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ description: editing.description, body: editing.body }),
+    }).catch(() => null);
+    if (!res?.ok) {
+      setSkillError((await res?.json().catch(() => null))?.detail || 'Could not save the skill (is the backend running?).');
+      return;
+    }
+    setSkillError('');
+    setEditing(null);
+    loadSkills();
+  };
+
+  const deleteSkill = async (name: string) => {
+    if (!port) return;
+    await fetch(backendUrl(port, `/skills/${encodeURIComponent(name)}`), { method: 'DELETE' }).catch(() => null);
+    if (editing?.name === name) setEditing(null);
+    loadSkills();
+  };
 
   useEffect(() => {
     if (!settings.ollamaUrl) return;
@@ -189,6 +247,76 @@ export default function SettingsPage({ quota }: { quota?: Record<string, any> })
                     <Plus size={12} /> Add provider
                   </button>
                 </div>
+              </div>
+            </div>
+          ),
+        },
+      ],
+    },
+    {
+      title: 'Skills & MCP',
+      icon: Plug,
+      items: [
+        {
+          label: 'Skills',
+          description: 'Instructions the agent loads when a task fits, e.g. your API conventions or test style. Only the name and description sit in the prompt. Per-project skills go in .termicursor/skills/<name>/SKILL.md.',
+          wide: true,
+          control: (
+            <div className="flex flex-col gap-2 w-full" data-testid="skills-editor">
+              {skills.map(s => (
+                <div key={s.name} className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-2">
+                  <button onClick={() => { setEditing({ ...s }); setSkillError(''); }} className="min-w-0 text-left">
+                    <div className="text-[12.5px] text-fg font-mono">{s.name}</div>
+                    <div className="text-[11px] text-dim truncate">{s.description || '(no description)'}</div>
+                  </button>
+                  <button onClick={() => deleteSkill(s.name)} title="Delete" className="p-1 text-dim hover:text-danger"><Trash2 size={13} /></button>
+                </div>
+              ))}
+              {editing ? (
+                <div className="flex flex-col gap-2 rounded-md border border-dashed border-border-strong p-2.5">
+                  <input placeholder="name (e.g. api-style)" value={editing.name} disabled={skills.some(s => s.name === editing.name)}
+                    onChange={e => setEditing({ ...editing, name: e.target.value.toLowerCase() })} className={`${inputClass} font-mono`} />
+                  <input placeholder="One line: when should the agent use this?" value={editing.description}
+                    onChange={e => setEditing({ ...editing, description: e.target.value })} className={inputClass} />
+                  <textarea placeholder="Instructions (markdown)" value={editing.body} rows={8}
+                    onChange={e => setEditing({ ...editing, body: e.target.value })} className={`${inputClass} font-mono resize-y`} />
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11.5px] text-danger">{skillError}</span>
+                    <div className="flex gap-2">
+                      <button onClick={() => setEditing(null)} className="rounded-md border border-border-strong px-2.5 py-1 text-[12px] text-muted hover:text-fg">Cancel</button>
+                      <button onClick={saveSkill} className="flex items-center gap-1 rounded-md border border-primary/40 px-2.5 py-1 text-[12px] text-primary hover:bg-primary/10"><Check size={12} /> Save skill</button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <button onClick={() => { setEditing({ ...EMPTY_SKILL }); setSkillError(''); }} disabled={!port}
+                  className="self-start flex items-center gap-1 rounded-md border border-primary/40 px-2.5 py-1 text-[12px] text-primary hover:bg-primary/10 disabled:opacity-40">
+                  <Plus size={12} /> New skill
+                </button>
+              )}
+            </div>
+          ),
+        },
+        {
+          label: 'MCP servers (connectors)',
+          description: 'External tools such as GitHub, Slack, databases or docs. Same format as Claude Desktop\'s mcpServers, so you can paste entries. Each server has a "command" (runs locally) or a "url". The agent asks before running any MCP tool.',
+          wide: true,
+          control: (
+            <div className="flex flex-col gap-2 w-full" data-testid="mcp-editor">
+              {Object.keys(settings.mcpServers || {}).length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {Object.keys(settings.mcpServers).map(n => (
+                    <span key={n} className="rounded-md border border-border bg-background px-2 py-0.5 text-[11.5px] font-mono text-muted">{n}</span>
+                  ))}
+                </div>
+              )}
+              <textarea value={mcpDraft} onChange={e => setMcpDraft(e.target.value)} placeholder={MCP_EXAMPLE} rows={8} spellCheck={false}
+                className={`${inputClass} font-mono resize-y`} />
+              <div className="flex items-center justify-between">
+                <span className="text-[11.5px] text-danger">{mcpError}</span>
+                <button onClick={saveMcp} className="flex items-center gap-1 rounded-md border border-primary/40 px-2.5 py-1 text-[12px] text-primary hover:bg-primary/10">
+                  <Check size={12} /> Save servers
+                </button>
               </div>
             </div>
           ),

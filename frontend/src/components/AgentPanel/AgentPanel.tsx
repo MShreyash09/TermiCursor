@@ -7,8 +7,9 @@ import TaskListPanel from './TaskListPanel';
 import ArtifactTrail from './ArtifactTrail';
 import ApprovalPrompt from './ApprovalPrompt';
 import PlanReview from './PlanReview';
+import ModelPicker from './ModelPicker';
 import { backendUrl } from '../../backend';
-import { Kbd, StatusDot } from '../ui';
+import { StatusDot } from '../ui';
 
 interface AgentPanelProps {
   backendPort?: number;
@@ -117,7 +118,7 @@ function Transcript({ log }: { log: LogLine[] }) {
   );
 }
 
-export default function AgentPanel({ projectPath, isIngesting, backendPort = 8000, onFilesChanged }: AgentPanelProps) {
+export default function AgentPanel({ projectPath, isIngesting, backendPort = 8000, backendStatus, onFilesChanged }: AgentPanelProps) {
   const agent = useAgentSocket(backendPort, projectPath);
   const [input, setInput] = useState('');
   const [agentKind, setAgentKind] = useState<AgentKind>(() => {
@@ -262,7 +263,7 @@ export default function AgentPanel({ projectPath, isIngesting, backendPort = 800
               );
             })}
           </div>
-          <span className="text-[10.5px] text-dim flex items-center gap-1"><Kbd>Enter</Kbd> send</span>
+          <ModelPicker ollamaModels={backendStatus?.available_models} disabled={agent.isRunning} />
         </div>
         <div className="relative rounded-lg border bg-background transition-colors"
           style={{ borderColor: input ? `${mode.color}66` : '#1f1f1f' }}>

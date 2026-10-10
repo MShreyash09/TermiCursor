@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react';
-import { Type, Terminal, Cpu, Keyboard, Trash2, Plus, Search, Check, ShieldCheck, Plug } from 'lucide-react';
+import { Type, Terminal, Cpu, Keyboard, Trash2, Plus, Search, Check, ShieldCheck, Plug, Eye, EyeOff, Pencil, RotateCcw } from 'lucide-react';
 import { Kbd, quotaText } from './ui';
 import { backendUrl } from '../backend';
+import { SHORTCUT_ACTIONS, comboFromEvent, resolveBindings, type ShortcutId } from '../shortcuts';
 
 interface Skill { name: string; description: string; body: string }
 const EMPTY_SKILL: Skill = { name: '', description: '', body: '' };
@@ -12,6 +13,7 @@ const MCP_EXAMPLE = `{
 
 // Official OpenAI-compatible endpoints; the user only pastes a key.
 const PRESETS = [
+  { name: 'Groq', baseUrl: 'https://api.groq.com/openai/v1', model: 'llama-3.1-8b-instant' },
   { name: 'Gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-2.5-flash' },
   { name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
   { name: 'Anthropic', baseUrl: 'https://api.anthropic.com/v1', model: 'claude-sonnet-5-5' },
@@ -41,11 +43,9 @@ function Dropdown({ value, options, onChange }: { value: string; options: string
 interface Item { label: string; description: string; control: ReactNode; wide?: boolean }
 interface Section { title: string; icon: typeof Type; items: Item[] }
 
-const SHORTCUTS: [string, string][] = [
-  ['Ctrl+L', 'Toggle the agent panel'], ['Ctrl+B', 'Toggle the explorer'], ['Ctrl+`', 'Toggle the terminal'],
-  ['Ctrl+P', 'Command palette'], ['Ctrl+,', 'Settings'], ['Ctrl+E', 'Back to the explorer'], ['Ctrl+/', 'Shortcut overview'],
-  ['Ctrl+S', 'Save the current file'],
-];
+interface Provider { name: string; apiKey: string; baseUrl: string; model: string }
+const EMPTY_PROVIDER: Provider = { name: '', apiKey: '', baseUrl: '', model: '' };
+const mask = (key: string) => (key ? `${'•'.repeat(8)}${key.slice(-4)}` : '(no key)');
 
 export default function SettingsPage({ quota, port }: { quota?: Record<string, any>; port?: number }) {
   const [settings, setSettings] = useState({
@@ -62,9 +62,8 @@ export default function SettingsPage({ quota, port }: { quota?: Record<string, a
     ollamaUrl: 'http://localhost:11434',
     autoIngest: true,
     llmProvider: 'ollama',
-    groqApiKey: '',
-    groqModel: 'llama-3.1-8b-instant',
-    customProviders: [] as any[],
+    customProviders: [] as Provider[],
+    keybindings: {} as Record<string, string>,
     autoApproveShell: false,
     mcpServers: {} as Record<string, any>,
   });
@@ -73,19 +72,41 @@ export default function SettingsPage({ quota, port }: { quota?: Record<string, a
   const [skills, setSkills] = useState<Skill[]>([]);
   const [editing, setEditing] = useState<Skill | null>(null);  // skill open in the editor (new or existing)
   const [skillError, setSkillError] = useState('');
-  const [newProvider, setNewProvider] = useState({ name: '', apiKey: '', baseUrl: '', model: '' });
+  const [newProvider, setNewProvider] = useState<Provider>(EMPTY_PROVIDER);
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);  // provider being edited; null = adding
+  const [showKey, setShowKey] = useState(false);                     // reveal the key in the form
+  const [revealed, setRevealed] = useState<Set<number>>(new Set());   // revealed keys in the list
   const [providerError, setProviderError] = useState('');
+  const [recording, setRecording] = useState<ShortcutId | null>(null);
+  const [shortcutError, setShortcutError] = useState('');
   const [availableOllamaModels, setAvailableOllamaModels] = useState<string[]>([]);
   const [query, setQuery] = useState('');
   const [saved, setSaved] = useState(false);
   const savedTimer = useRef<number | undefined>(undefined);
 
   useEffect(() => {
-    (window as any).electronAPI?.loadSettings?.().then((loaded: any) => {
+    const api = (window as any).electronAPI;
+    api?.loadSettings?.().then((loaded: any) => {
+      // Groq used to be built in; turn its old settings into a regular provider entry.
+      if (loaded && 'groqApiKey' in loaded) {
+        const { groqApiKey, groqModel, ...rest } = loaded;
+        const providers: Provider[] = rest.customProviders || [];
+        if (groqApiKey && !providers.some(p => p.name.toLowerCase() === 'groq'))
+          providers.push({ name: 'Groq', apiKey: groqApiKey, baseUrl: 'https://api.groq.com/openai/v1', model: groqModel || 'llama-3.1-8b-instant' });
+        loaded = { ...rest, customProviders: providers, llmProvider: rest.llmProvider === 'groq' ? 'Groq' : rest.llmProvider };
+        api.saveSettings?.(loaded);
+      }
       if (loaded && Object.keys(loaded).length > 0) setSettings(prev => ({ ...prev, ...loaded }));
       const servers = loaded?.mcpServers;
       setMcpDraft(servers && Object.keys(servers).length ? JSON.stringify(servers, null, 2) : '');
     });
+  }, []);
+
+  // The chat's model picker saved settings.json; adopt its choice so our next save doesn't revert it.
+  useEffect(() => {
+    const onPick = (e: Event) => setSettings(prev => ({ ...prev, ...(e as CustomEvent).detail }));
+    window.addEventListener('model-picked', onPick);
+    return () => window.removeEventListener('model-picked', onPick);
   }, []);
 
   const loadSkills = () => {
@@ -150,20 +171,60 @@ export default function SettingsPage({ quota, port }: { quota?: Record<string, a
     });
   };
 
-  const addCustomProvider = () => {
-    if (!newProvider.name || !newProvider.apiKey || !newProvider.model) {
-      setProviderError('Name, model and API key are required.');
-      return;
+  const resetProviderForm = () => {
+    setNewProvider(EMPTY_PROVIDER); setEditingIdx(null); setShowKey(false); setProviderError('');
+  };
+
+  const saveProvider = () => {
+    const p = { ...newProvider, name: newProvider.name.trim(), model: newProvider.model.trim(), baseUrl: newProvider.baseUrl.trim() };
+    const list = settings.customProviders || [];
+    if (!p.name || !p.apiKey || !p.model) return setProviderError('Name, model and API key are required.');
+    if (p.name.toLowerCase() === 'ollama') return setProviderError('"ollama" is reserved for the local model.');
+    if (list.some((o, i) => i !== editingIdx && o.name.toLowerCase() === p.name.toLowerCase()))
+      return setProviderError(`A provider named "${p.name}" already exists.`);
+    if (editingIdx === null) {
+      updateSetting('customProviders', [...list, p]);
+    } else {
+      const old = list[editingIdx];
+      updateSetting('customProviders', list.map((o, i) => (i === editingIdx ? p : o)));
+      if (settings.llmProvider === old.name) updateSetting('llmProvider', p.name);  // renamed the active one
     }
-    setProviderError('');
-    updateSetting('customProviders', [...(settings.customProviders || []), newProvider]);
-    setNewProvider({ name: '', apiKey: '', baseUrl: '', model: '' });
+    resetProviderForm();
+  };
+
+  const editProvider = (index: number) => {
+    setNewProvider({ ...EMPTY_PROVIDER, ...settings.customProviders[index] });
+    setEditingIdx(index); setShowKey(false); setProviderError('');
   };
 
   const removeCustomProvider = (index: number) => {
-    const updated = [...(settings.customProviders || [])];
-    updated.splice(index, 1);
-    updateSetting('customProviders', updated);
+    const list = settings.customProviders || [];
+    updateSetting('customProviders', list.filter((_, i) => i !== index));
+    if (settings.llmProvider === list[index].name) updateSetting('llmProvider', 'ollama');
+    if (editingIdx !== null) resetProviderForm();
+    setRevealed(new Set());
+  };
+
+  const bindings = resolveBindings(settings.keybindings);
+  const recordShortcut = (id: ShortcutId, e: React.KeyboardEvent) => {
+    e.preventDefault();
+    e.stopPropagation();  // don't fire the app's current shortcuts while recording
+    if (e.key === 'Escape') { setRecording(null); setShortcutError(''); return; }
+    const combo = comboFromEvent(e);
+    if (!combo) return;  // only modifiers held so far
+    if (!e.ctrlKey && !e.altKey && !/^F\d+$/.test(e.key))
+      return setShortcutError("Use Ctrl or Alt with a key (or an F-key), so typing isn't hijacked.");
+    const clash = SHORTCUT_ACTIONS.find(a => a.id !== id && bindings[a.id] === combo);
+    if (clash) return setShortcutError(`${combo} is already used by "${clash.label}".`);
+    const { [id]: _, ...rest } = settings.keybindings || {};
+    const isDefault = SHORTCUT_ACTIONS.find(a => a.id === id)!.keys === combo;
+    updateSetting('keybindings', isDefault ? rest : { ...rest, [id]: combo });
+    setRecording(null); setShortcutError('');
+  };
+
+  const resetShortcut = (id: ShortcutId) => {
+    const { [id]: _, ...rest } = settings.keybindings || {};
+    updateSetting('keybindings', rest);
   };
 
   const cloud = settings.llmProvider !== 'ollama';
@@ -177,7 +238,7 @@ export default function SettingsPage({ quota, port }: { quota?: Record<string, a
           description: cloud
             ? 'A cloud API: your prompts and the code the agent reads are sent to this provider.'
             : 'Ollama runs the model on this PC; your code stays local.',
-          control: <Dropdown value={settings.llmProvider} options={['ollama', 'groq', ...(settings.customProviders || []).map((p: any) => p.name)]} onChange={(v) => updateSetting('llmProvider', v)} />,
+          control: <Dropdown value={settings.llmProvider} options={['ollama', ...(settings.customProviders || []).map(p => p.name)]} onChange={(v) => updateSetting('llmProvider', v)} />,
         },
         {
           label: 'Ollama model',
@@ -205,29 +266,28 @@ export default function SettingsPage({ quota, port }: { quota?: Record<string, a
           control: <Toggle checked={settings.autoIngest} onChange={(v) => updateSetting('autoIngest', v)} />,
         },
         {
-          label: 'Groq API key',
-          description: 'Needed only when the provider is groq.',
-          control: <input type="password" value={settings.groqApiKey || ''} onChange={(e) => updateSetting('groqApiKey', e.target.value)} className={`${inputClass} w-56`} />,
-        },
-        {
-          label: 'Groq model',
-          description: `Model to use on Groq. Usage: ${quotaText(quota?.groq)}`,
-          control: <Dropdown value={settings.groqModel || 'llama-3.1-8b-instant'} options={['llama-3.1-8b-instant', 'llama-3.3-70b-versatile']} onChange={(v) => updateSetting('groqModel', v)} />,
-        },
-        {
-          label: 'Custom API providers',
-          description: 'OpenAI-compatible APIs (Gemini, OpenAI, Anthropic, OpenRouter, DeepSeek…). Pick a preset, paste your key, then select it as the provider above.',
+          label: 'API providers',
+          description: 'OpenAI-compatible APIs (Groq, Gemini, OpenAI, Anthropic, OpenRouter, DeepSeek…). Pick a preset, paste your key, then select it as the provider above. Use the pencil to edit one.',
           wide: true,
           control: (
-            <div className="flex flex-col gap-2 w-full">
-              {(settings.customProviders || []).map((p: any, idx: number) => (
-                <div key={idx} className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-2">
+            <div className="flex flex-col gap-2 w-full" data-testid="providers-editor">
+              {(settings.customProviders || []).map((p, idx) => (
+                <div key={idx} data-testid="provider-row"
+                  className={`flex items-center justify-between gap-3 rounded-md border bg-background px-3 py-2 ${editingIdx === idx ? 'border-primary/50' : 'border-border'}`}>
                   <div className="min-w-0">
-                    <div className="text-[12.5px] text-fg">{p.name}</div>
+                    <div className="text-[12.5px] text-fg">{p.name}{settings.llmProvider === p.name && <span className="ml-2 text-[10.5px] text-primary">active</span>}</div>
                     <div className="text-[11px] text-dim font-mono truncate">{p.model} · {p.baseUrl || 'api.openai.com/v1'}</div>
+                    <div className="text-[11px] text-dim font-mono break-all" data-testid="provider-key">{revealed.has(idx) ? p.apiKey : mask(p.apiKey)}</div>
                     <div className="text-[11px] text-muted font-mono">{quotaText(quota?.[p.name.toLowerCase()])}</div>
                   </div>
-                  <button onClick={() => removeCustomProvider(idx)} title="Remove" className="p-1 text-dim hover:text-danger"><Trash2 size={13} /></button>
+                  <div className="flex shrink-0 items-center">
+                    <button onClick={() => setRevealed(r => { const n = new Set(r); if (n.has(idx)) n.delete(idx); else n.add(idx); return n; })}
+                      title={revealed.has(idx) ? 'Hide API key' : 'Show API key'} aria-label={revealed.has(idx) ? 'Hide API key' : 'Show API key'} className="p-1 text-dim hover:text-fg">
+                      {revealed.has(idx) ? <EyeOff size={13} /> : <Eye size={13} />}
+                    </button>
+                    <button onClick={() => editProvider(idx)} title="Edit" aria-label={`Edit ${p.name}`} className="p-1 text-dim hover:text-fg"><Pencil size={13} /></button>
+                    <button onClick={() => removeCustomProvider(idx)} title="Remove" aria-label={`Remove ${p.name}`} className="p-1 text-dim hover:text-danger"><Trash2 size={13} /></button>
+                  </div>
                 </div>
               ))}
               <div className="flex flex-wrap gap-1.5">
@@ -239,13 +299,21 @@ export default function SettingsPage({ quota, port }: { quota?: Record<string, a
               <div className="grid grid-cols-2 gap-2 rounded-md border border-dashed border-border-strong p-2.5">
                 <input placeholder="Name (e.g. DeepSeek)" value={newProvider.name} onChange={e => setNewProvider(p => ({ ...p, name: e.target.value }))} className={inputClass} />
                 <input placeholder="Model (e.g. deepseek-chat)" value={newProvider.model} onChange={e => setNewProvider(p => ({ ...p, model: e.target.value }))} className={inputClass} />
-                <input type="password" placeholder="API key" value={newProvider.apiKey} onChange={e => setNewProvider(p => ({ ...p, apiKey: e.target.value }))} className={inputClass} />
+                <div className="relative">
+                  <input type={showKey ? 'text' : 'password'} placeholder="API key" value={newProvider.apiKey}
+                    onChange={e => setNewProvider(p => ({ ...p, apiKey: e.target.value }))} className={`${inputClass} w-full pr-8`} />
+                  <button type="button" onClick={() => setShowKey(v => !v)} title={showKey ? 'Hide API key' : 'Show API key'} aria-label={showKey ? 'Hide API key' : 'Show API key'}
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 text-dim hover:text-fg">{showKey ? <EyeOff size={13} /> : <Eye size={13} />}</button>
+                </div>
                 <input placeholder="Base URL (optional)" value={newProvider.baseUrl} onChange={e => setNewProvider(p => ({ ...p, baseUrl: e.target.value }))} className={inputClass} />
                 <div className="col-span-2 flex items-center justify-between">
                   <span className="text-[11.5px] text-danger">{providerError}</span>
-                  <button onClick={addCustomProvider} className="flex items-center gap-1 rounded-md border border-primary/40 px-2.5 py-1 text-[12px] text-primary hover:bg-primary/10">
-                    <Plus size={12} /> Add provider
-                  </button>
+                  <div className="flex gap-2">
+                    {editingIdx !== null && <button onClick={resetProviderForm} className="rounded-md border border-border-strong px-2.5 py-1 text-[12px] text-muted hover:text-fg">Cancel</button>}
+                    <button onClick={saveProvider} className="flex items-center gap-1 rounded-md border border-primary/40 px-2.5 py-1 text-[12px] text-primary hover:bg-primary/10">
+                      {editingIdx === null ? <><Plus size={12} /> Add provider</> : <><Check size={12} /> Save changes</>}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -350,7 +418,7 @@ export default function SettingsPage({ quota, port }: { quota?: Record<string, a
   const visible = sections
     .map(s => ({ ...s, items: s.items.filter(i => !q || `${i.label} ${i.description} ${s.title}`.toLowerCase().includes(q)) }))
     .filter(s => s.items.length > 0);
-  const showShortcuts = !q || 'keyboard shortcuts'.includes(q) || SHORTCUTS.some(([, d]) => d.toLowerCase().includes(q));
+  const showShortcuts = !q || 'keyboard shortcuts'.includes(q) || SHORTCUT_ACTIONS.some(a => a.label.toLowerCase().includes(q));
 
   return (
     <div className="flex-1 h-full bg-background overflow-y-auto" data-testid="settings-page">
@@ -396,12 +464,27 @@ export default function SettingsPage({ quota, port }: { quota?: Record<string, a
               <h2 className="flex items-center gap-2 mb-2.5 font-mono text-[11px] tracking-[0.12em] text-dim">
                 <Keyboard size={13} /> KEYBOARD SHORTCUTS
               </h2>
-              <div className="rounded-lg border border-border bg-surface divide-y divide-border">
-                {SHORTCUTS.map(([keys, desc]) => (
-                  <div key={keys} className="px-4 py-2.5 flex items-center justify-between text-[12.5px]">
-                    <span className="text-muted">{desc}</span><Kbd>{keys}</Kbd>
+              <div className="rounded-lg border border-border bg-surface divide-y divide-border" data-testid="shortcuts-editor">
+                {SHORTCUT_ACTIONS.map(a => (
+                  <div key={a.id} className="px-4 py-2 flex items-center justify-between gap-3 text-[12.5px]">
+                    <span className="text-muted">{a.label}</span>
+                    <div className="flex items-center gap-1.5">
+                      {settings.keybindings?.[a.id] && (
+                        <button onClick={() => resetShortcut(a.id)} title={`Reset to ${a.keys}`} aria-label={`Reset ${a.label}`} className="p-1 text-dim hover:text-fg"><RotateCcw size={12} /></button>
+                      )}
+                      <button data-testid={`shortcut-${a.id}`} onClick={() => { setRecording(a.id); setShortcutError(''); }}
+                        onKeyDown={e => { if (recording === a.id) recordShortcut(a.id, e); }}
+                        onBlur={() => { if (recording === a.id) setRecording(null); }}
+                        title="Click, then press the new key combination" className="rounded-md hover:ring-1 hover:ring-primary/40">
+                        {recording === a.id ? <span className="px-2 text-[11.5px] text-primary">Press keys… (Esc cancels)</span> : <Kbd>{bindings[a.id]}</Kbd>}
+                      </button>
+                    </div>
                   </div>
                 ))}
+                <div className="px-4 py-2.5 flex items-center justify-between text-[12.5px]">
+                  <span className="text-muted">Save the current file</span><Kbd>Ctrl+S</Kbd>
+                </div>
+                {shortcutError && <div className="px-4 py-2 text-[11.5px] text-danger" data-testid="shortcut-error">{shortcutError}</div>}
               </div>
             </section>
           )}

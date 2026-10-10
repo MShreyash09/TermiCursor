@@ -33,7 +33,7 @@ comes with Windows.
 - Checking GitHub for TermiCursor updates.
 - Downloading models through Ollama (only when you click Install).
 - Web pages the agent opens with its browser tools.
-- **Cloud models (optional):** if you choose Groq or a custom OpenAI-compatible provider in
+- **Cloud models (optional):** if you add and choose an OpenAI-compatible provider (Groq, Gemini, OpenAI…) in
   Settings, your prompts and the code the agent reads are sent to that provider.
 
 ### Safety
@@ -91,7 +91,7 @@ flowchart TB
         BROWSER["Edge / Chromium<br/>via Playwright"]
     end
 
-    CLOUD["Groq or OpenAI-compatible API<br/>optional, off by default"]
+    CLOUD["OpenAI-compatible API<br/>optional, off by default"]
 
     MAIN -->|"starts it with a token"| API
     UI -->|"HTTP + WebSocket"| API
@@ -309,7 +309,7 @@ Official documentation and sources used or referenced to build TermiCursor.
 - [Ollama](https://ollama.com) and the [Ollama API docs](https://docs.ollama.com/api): local model runtime (`/api/chat`, `/api/tags`, `/api/pull`)
 - [qwen2.5-coder on Ollama](https://ollama.com/library/qwen2.5-coder) and the [Qwen2.5-Coder Technical Report](https://arxiv.org/abs/2409.12186): the default agent model
 - [nomic-embed-text on Ollama](https://ollama.com/library/nomic-embed-text): the embedding model
-- [Groq OpenAI compatibility](https://console.groq.com/docs/openai): the optional cloud provider and the OpenAI-compatible request format used for custom providers
+- [Groq OpenAI compatibility](https://console.groq.com/docs/openai): the OpenAI-compatible request format used for API providers
 
 ### Agent design
 - [ReAct: Synergizing Reasoning and Acting in Language Models](https://arxiv.org/abs/2210.03629): the reason → act → observe loop each step runs

@@ -74,7 +74,8 @@ export async function launch({ log = () => {} } = {}) {
 
   const backend = spawn(python, ['-m', 'uvicorn', 'server:app', '--port', String(backendPort)], {
     cwd: REPO, windowsHide: true,
-    env: { ...process.env, TERMICURSOR_USER_DATA: path.join(tmp, 'backend'), TERMICURSOR_EXTRA_ORIGIN: `http://localhost:${vitePort}` },
+    // Same data folder as Electron, like the packaged app, so the backend sees Settings changes.
+    env: { ...process.env, TERMICURSOR_USER_DATA: path.join(tmp, 'electron'), TERMICURSOR_EXTRA_ORIGIN: `http://localhost:${vitePort}` },
   });
   children.push(backend);
   backend.stderr.on('data', (d) => log(`[backend] ${d}`));

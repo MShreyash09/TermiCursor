@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Command } from 'cmdk';
 import { Settings, RefreshCw, Terminal, Search, PanelLeft, FolderOpen, Bot, Keyboard } from 'lucide-react';
 import { Kbd } from './ui';
+import { findAction, useKeybindings } from '../shortcuts';
 
 interface CommandPaletteProps {
   onToggleTerminal: () => void;
@@ -14,10 +15,11 @@ interface CommandPaletteProps {
 
 export default function CommandPalette(props: CommandPaletteProps) {
   const [open, setOpen] = useState(false);
+  const keys = useKeybindings();
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
-      if ((e.key === 'k' || e.key === 'p') && (e.metaKey || e.ctrlKey)) {
+      if (findAction(keys, e) === 'commandPalette') {
         e.preventDefault();
         setOpen((o) => !o);
       }
@@ -25,17 +27,17 @@ export default function CommandPalette(props: CommandPaletteProps) {
     };
     document.addEventListener('keydown', down);
     return () => document.removeEventListener('keydown', down);
-  }, []);
+  }, [keys]);
 
   if (!open) return null;
 
   const items: [string, typeof Settings, string | null, (() => void) | undefined][] = [
     ['Open folder…', FolderOpen, null, props.onOpenFolder],
-    ['Toggle agent panel', Bot, 'Ctrl+L', props.onToggleAgent],
-    ['Toggle explorer', PanelLeft, 'Ctrl+B', props.onToggleSidebar],
-    ['Toggle terminal', Terminal, 'Ctrl+`', props.onToggleTerminal],
-    ['Open settings', Settings, 'Ctrl+,', props.onOpenSettings],
-    ['Keyboard shortcuts', Keyboard, 'Ctrl+/', props.onShowShortcuts],
+    ['Toggle agent panel', Bot, keys.toggleAgent, props.onToggleAgent],
+    ['Toggle explorer', PanelLeft, keys.toggleExplorer, props.onToggleSidebar],
+    ['Toggle terminal', Terminal, keys.toggleTerminal, props.onToggleTerminal],
+    ['Open settings', Settings, keys.openSettings, props.onOpenSettings],
+    ['Keyboard shortcuts', Keyboard, keys.showShortcuts, props.onShowShortcuts],
     ['Reload window', RefreshCw, null, () => window.location.reload()],
   ];
 
@@ -50,12 +52,12 @@ export default function CommandPalette(props: CommandPaletteProps) {
           </div>
           <Command.List className="max-h-[320px] overflow-y-auto p-1.5">
             <Command.Empty className="py-6 text-center text-[12.5px] text-dim">No matching commands.</Command.Empty>
-            {items.filter(([, , , fn]) => fn).map(([label, Icon, keys, fn]) => (
+            {items.filter(([, , , fn]) => fn).map(([label, Icon, combo, fn]) => (
               <Command.Item key={label} onSelect={() => { fn?.(); setOpen(false); }}
                 className="flex items-center gap-2.5 px-2.5 py-2 rounded-md cursor-pointer text-[13px] text-muted aria-selected:bg-surface-hover aria-selected:text-fg">
                 <Icon size={14} className="text-dim" />
                 <span className="flex-1">{label}</span>
-                {keys && <Kbd>{keys}</Kbd>}
+                {combo && <Kbd>{combo}</Kbd>}
               </Command.Item>
             ))}
           </Command.List>

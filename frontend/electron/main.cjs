@@ -219,10 +219,15 @@ function createWindow() {
   ipcMain.handle('getBackendPort', () => backendPort);
   ipcMain.handle('getBackendToken', () => backendToken);
 
+  // Saves are queued: overlapping writeFile calls on one file interleave and corrupt it
+  // (two settings changed in the same tick, or fast typing in a settings field).
+  let settingsWrite = Promise.resolve();
   ipcMain.handle('dialog:saveSettings', async (event, settings) => {
     try {
       const settingsPath = path.join(app.getPath('userData'), 'settings.json');
-      await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+      const write = settingsWrite.then(() => fs.writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf-8'));
+      settingsWrite = write.catch(() => {});
+      await write;
       // Open panels (editor, terminal) apply font/editor settings live.
       win.webContents.send('settings-changed', settings);
       return true;

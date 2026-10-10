@@ -1,5 +1,6 @@
 import { FolderOpen, Check, X, Download, ArrowRight, Loader2 } from 'lucide-react';
 import { BlockLogo, Kbd } from './ui';
+import { useKeybindings } from '../shortcuts';
 
 interface RecentFolder {
   path: string;
@@ -15,15 +16,6 @@ interface WelcomeScreenProps {
   isPullingModels?: boolean;
   projectPath?: string;
 }
-
-const SHORTCUTS: [string, string][] = [
-  ['Ctrl+L', 'Agent panel'],
-  ['Ctrl+P', 'Command palette'],
-  ['Ctrl+`', 'Terminal'],
-  ['Ctrl+B', 'Explorer'],
-  ['Ctrl+,', 'Settings'],
-  ['Ctrl+/', 'All shortcuts'],
-];
 
 function Step({ state, title, children }: { state: 'done' | 'todo' | 'wait' | 'bad'; title: string; children?: React.ReactNode }) {
   const icon = {
@@ -47,6 +39,11 @@ function Step({ state, title, children }: { state: 'done' | 'todo' | 'wait' | 'b
 export default function WelcomeScreen({
   onOpenFolder, recentFolders = [], onOpenRecentFolder, backendStatus, onInstallModels, isPullingModels, projectPath,
 }: WelcomeScreenProps) {
+  const k = useKeybindings();
+  const SHORTCUTS: [string, string][] = [
+    [k.toggleAgent, 'Agent panel'], [k.commandPalette, 'Command palette'], [k.toggleTerminal, 'Terminal'],
+    [k.toggleExplorer, 'Explorer'], [k.openSettings, 'Settings'], [k.showShortcuts, 'All shortcuts'],
+  ];
   // A folder is open but no file: a quiet project home, like an editor watermark.
   if (projectPath) {
     const name = projectPath.split(/[\\/]/).filter(Boolean).pop();
@@ -59,7 +56,7 @@ export default function WelcomeScreen({
         </div>
         <div className="grid grid-cols-2 gap-x-10 gap-y-2.5">
           {SHORTCUTS.map(([keys, label]) => (
-            <div key={keys} className="flex items-center justify-between gap-6 text-[12.5px] text-dim">
+            <div key={label} className="flex items-center justify-between gap-6 text-[12.5px] text-dim">
               <span>{label}</span><Kbd>{keys}</Kbd>
             </div>
           ))}
@@ -129,7 +126,7 @@ export default function WelcomeScreen({
             <h2 className="mt-8 mb-2 font-mono text-[11px] tracking-[0.12em] text-dim">SHORTCUTS</h2>
             <div className="grid grid-cols-1 gap-1.5">
               {SHORTCUTS.slice(0, 4).map(([keys, label]) => (
-                <div key={keys} className="flex items-center justify-between text-[12.5px] text-dim">
+                <div key={label} className="flex items-center justify-between text-[12.5px] text-dim">
                   <span>{label}</span><Kbd>{keys}</Kbd>
                 </div>
               ))}

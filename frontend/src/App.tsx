@@ -13,6 +13,7 @@ import CommandPalette from './components/CommandPalette';
 import TerminalPanel from './components/TerminalPanel';
 import { Kbd } from './components/ui';
 import { backendUrl, setBackendToken } from './backend';
+import { SHORTCUT_ACTIONS, findAction, useKeybindings, type ShortcutId } from './shortcuts';
 
 function App() {
   const [projectPath, setProjectPath] = useState('');
@@ -68,55 +69,32 @@ function App() {
     }
   };
 
-  // Keyboard shortcut listeners
+  // Keyboard shortcut listeners (bindings are user-editable in Settings)
+  const keybindings = useKeybindings();
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
         return;
       }
-
-      // Ctrl + B -> Toggle File Tree (Sidebar)
-      if (e.ctrlKey && e.key.toLowerCase() === 'b') {
+      const run: Partial<Record<ShortcutId, () => void>> = {
+        toggleExplorer: toggleFileTree,
+        toggleTerminal,
+        toggleAgent: toggleAiChat,
+        openSettings: () => setActiveView('settings'),
+        explorerView: () => { setActiveView('explorer'); fileTreePanelRef.current?.expand(); },
+        showShortcuts: () => setShowShortcuts(prev => !prev),
+      };
+      const fn = run[findAction(keybindings, e)!];
+      if (fn) {
         e.preventDefault();
-        toggleFileTree();
-      }
-
-      // Ctrl + ` -> Toggle Terminal
-      if (e.ctrlKey && e.key === '`') {
-        e.preventDefault();
-        toggleTerminal();
-      }
-
-      // Ctrl + , -> Switch to Settings
-      if (e.ctrlKey && e.key === ',') {
-        e.preventDefault();
-        setActiveView('settings');
-      }
-
-      // Ctrl + E -> Switch back to Explorer
-      if (e.ctrlKey && e.key.toLowerCase() === 'e') {
-        e.preventDefault();
-        setActiveView('explorer');
-        fileTreePanelRef.current?.expand();
-      }
-
-      // Ctrl + L -> Toggle AI Chat
-      if (e.ctrlKey && e.key.toLowerCase() === 'l') {
-        e.preventDefault();
-        toggleAiChat();
-      }
-
-      // Ctrl + / or Ctrl + ? -> Show Shortcuts
-      if (e.ctrlKey && (e.key === '/' || e.key === '?')) {
-        e.preventDefault();
-        setShowShortcuts(prev => !prev);
+        fn();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [keybindings]);
 
   const checkStatus = (port: number = backendPort) => {
     fetch(backendUrl(port, '/status'))
@@ -124,6 +102,14 @@ function App() {
       .then(data => setBackendStatus(data))
       .catch(e => console.error("Status check failed", e));
   };
+
+  // The status bar shows the active model: refresh as soon as the chat's picker changes it.
+  useEffect(() => {
+    if (!backendPort) return;
+    const onPick = () => checkStatus();
+    window.addEventListener('model-picked', onPick);
+    return () => window.removeEventListener('model-picked', onPick);
+  }, [backendPort]);
 
   // The packaged backend takes a few seconds to boot, and first-time users may
   // still be installing/starting Ollama: keep polling until everything is ready.
@@ -384,12 +370,8 @@ function App() {
               <button onClick={() => setShowShortcuts(false)} className="text-dim hover:text-fg text-[13px]">✕</button>
             </div>
             <div className="p-2">
-              {([
-                ['Toggle the agent panel', 'Ctrl+L'], ['Toggle the explorer', 'Ctrl+B'], ['Toggle the terminal', 'Ctrl+`'],
-                ['Command palette', 'Ctrl+P'], ['Settings', 'Ctrl+,'], ['Explorer view', 'Ctrl+E'], ['Save file', 'Ctrl+S'],
-                ['This overview', 'Ctrl+/'],
-              ] as [string, string][]).map(([label, keys]) => (
-                <div key={keys} className="flex items-center justify-between px-2.5 py-2 rounded-md hover:bg-surface-hover text-[12.5px]">
+              {[...SHORTCUT_ACTIONS.map(a => [a.label, keybindings[a.id]]), ['Save file', 'Ctrl+S']].map(([label, keys]) => (
+                <div key={label} className="flex items-center justify-between px-2.5 py-2 rounded-md hover:bg-surface-hover text-[12.5px]">
                   <span className="text-muted">{label}</span><Kbd>{keys}</Kbd>
                 </div>
               ))}

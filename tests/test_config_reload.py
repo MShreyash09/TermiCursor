@@ -47,3 +47,18 @@ def test_custom_provider_routes_to_its_openai_compatible_endpoint(tmp_path, monk
     assert calls == [("https://llm.example/v1/chat/completions", "k-123", "m-1", "MyCloud")]
     monkeypatch.undo()
     config.reload_settings()
+
+
+def test_unknown_provider_fails_instead_of_falling_back_to_ollama(tmp_path, monkeypatch):
+    import asyncio
+    import pytest
+    from core.agent import llm_client
+
+    settings = tmp_path / "settings.json"
+    monkeypatch.setattr(config, "SETTINGS_PATH", str(settings))
+    settings.write_text(json.dumps({"llmProvider": "groq", "customProviders": []}))  # provider was deleted
+    config.reload_settings()
+    with pytest.raises(RuntimeError, match="not configured"):
+        asyncio.run(llm_client.LLMClient().chat([{"role": "user", "content": "hi"}]))
+    monkeypatch.undo()
+    config.reload_settings()

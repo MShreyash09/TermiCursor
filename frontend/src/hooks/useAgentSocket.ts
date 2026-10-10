@@ -125,6 +125,8 @@ export function useAgentSocket(backendPort: number, projectPath: string): UseAge
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ project_path: projectPath, goal, agent }),
       });
+      // An older backend build (e.g. a stale exe bundled into an installer) has no /sessions route.
+      if (resp.status === 404) throw new Error('the backend is out of date (404). Reinstall the latest TermiCursor release.');
       if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
       id = (await resp.json()).session_id;
     } catch (e: any) {

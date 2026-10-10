@@ -1,5 +1,5 @@
 """Thin async chat client: local Ollama (/api/chat) by default, or an
-OpenAI-compatible API (Groq, or a custom provider added in Settings) when
+OpenAI-compatible API (a provider added in Settings) when
 `llmProvider` names one.
 
 Uses the JSON-prompt tool-calling strategy: the model is instructed via system
@@ -17,8 +17,6 @@ from contextlib import nullcontext
 import aiohttp
 
 from core import config
-
-GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 # Per-provider usage + rate-limit headers from the last response, served by /status.
 # ponytail: in-memory only, resets on app restart; persist to db if users want history.
@@ -98,17 +96,15 @@ class LLMClient:
     async def _dispatch(self, messages: list[dict], temperature: float) -> tuple[str, dict, dict]:
         """Returns (text, token usage, provider extras). Provider routing only."""
         provider = config.LLM_PROVIDER
-        if provider == "groq":
-            if not config.GROQ_API_KEY:
-                raise RuntimeError("Groq is selected as the LLM provider but no Groq API key is set in Settings.")
-            return await self._chat_openai_compatible(
-                GROQ_CHAT_URL, config.GROQ_API_KEY, config.GROQ_MODEL, messages, temperature, "Groq")
         custom = next((p for p in config.CUSTOM_PROVIDERS if p["name"].lower() == provider), None)
         if custom is not None:
             base = (custom.get("baseUrl") or "https://api.openai.com/v1").rstrip("/")
             return await self._chat_openai_compatible(
                 f"{base}/chat/completions", custom.get("apiKey", ""), custom.get("model", ""),
                 messages, temperature, custom["name"])
+        if provider != "ollama":
+            # Deleted or renamed in Settings: fail loudly instead of silently running on Ollama.
+            raise RuntimeError(f"LLM provider '{provider}' is not configured. Pick one in Settings.")
         payload = {
             "model": self.model,
             "messages": messages,

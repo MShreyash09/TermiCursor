@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { ArrowUp, Brain, Plus, Square, Cog, Check, X, AlertTriangle } from 'lucide-react';
+import { ArrowUp, Brain, Plus, Square, Cog, Check, X, AlertTriangle, History } from 'lucide-react';
 import { useAgentSocket } from '../../hooks/useAgentSocket';
-import type { AgentKind, LogLine, ProjectMemory } from '../../types/agent';
+import type { AgentKind, LogLine, ProjectMemory, SessionSummary } from '../../types/agent';
 import TaskListPanel from './TaskListPanel';
 import ArtifactTrail from './ArtifactTrail';
+import ChangesReview from './ChangesReview';
 import ApprovalPrompt from './ApprovalPrompt';
 import PlanReview from './PlanReview';
 import ModelPicker from './ModelPicker';
@@ -56,6 +57,14 @@ const codeifyDunders = (t: string) =>
 function keyArg(args: Record<string, any> = {}) {
   const v = args.command ?? args.path ?? args.pattern ?? args.query ?? args.url ?? args.selector;
   return v === undefined ? '' : String(v);
+}
+
+function ago(ts: number) {
+  const s = Math.max(0, Date.now() / 1000 - ts);
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
 }
 
 function Transcript({ log }: { log: LogLine[] }) {
@@ -129,6 +138,20 @@ export default function AgentPanel({ projectPath, isIngesting, backendPort = 800
     try { localStorage.setItem('agentKind', k); } catch { /* ignore */ }
   };
   const [memory, setMemory] = useState<ProjectMemory | null>(null);
+  // Past chats of this project, loaded each time the History dropdown opens.
+  const [history, setHistory] = useState<SessionSummary[] | null>(null);
+  const toggleHistory = async () => {
+    if (history) { setHistory(null); return; }
+    try {
+      const r = await fetch(backendUrl(backendPort, `/sessions?project_path=${encodeURIComponent(projectPath)}`));
+      setHistory(r.ok ? (await r.json()).sessions : []);
+    } catch { setHistory([]); }
+  };
+  // @-mention popup: `at` is the index of the '@' being typed, files are cached per project.
+  const [mention, setMention] = useState<{ at: number; query: string } | null>(null);
+  const [mentionSel, setMentionSel] = useState(0);
+  const [files, setFiles] = useState<string[]>([]);
+  const filesCache = useRef<{ project: string; files: string[] } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const prevArtifacts = useRef(0);
@@ -158,7 +181,7 @@ export default function AgentPanel({ projectPath, isIngesting, backendPort = 800
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [agent.log, agent.steps, agent.pendingApproval, agent.status]);
+  }, [agent.log, agent.preview, agent.steps, agent.pendingApproval, agent.status]);
 
   // Refresh the file tree whenever a file-change artifact lands.
   useEffect(() => {
@@ -167,7 +190,7 @@ export default function AgentPanel({ projectPath, isIngesting, backendPort = 800
     if (agent.artifacts.length > prevArtifacts.current) {
       const fresh = agent.artifacts.slice(prevArtifacts.current);
       const changed = fresh.filter(a => a.kind === 'file_change').map(a => String(a.data?.path ?? ''));
-      if (changed.length) onFilesChanged?.(changed);
+      if (changed.length) { filesCache.current = null; onFilesChanged?.(changed); }
       prevArtifacts.current = agent.artifacts.length;
     }
   }, [agent.artifacts, onFilesChanged]);
@@ -179,23 +202,85 @@ export default function AgentPanel({ projectPath, isIngesting, backendPort = 800
     setInput('');
   };
 
+  const matches = mention
+    ? files.filter((f) => f.toLowerCase().includes(mention.query.toLowerCase())).slice(0, 8)
+    : [];
+
+  const onInputChange = (value: string, cursor: number) => {
+    setInput(value);
+    const m = /(^|\s)@([^\s@]*)$/.exec(value.slice(0, cursor));
+    if (!m) { setMention(null); return; }
+    setMention({ at: cursor - m[2].length - 1, query: m[2] });
+    setMentionSel(0);
+    if (filesCache.current?.project === projectPath) { setFiles(filesCache.current.files); return; }
+    const api = (window as any).electronAPI;
+    api?.listFiles?.(projectPath).then((list: string[]) => {
+      filesCache.current = { project: projectPath, files: list };
+      setFiles(list);
+    }).catch(() => {});
+  };
+
+  const pickMention = (path: string) => {
+    if (!mention) return;
+    const end = mention.at + 1 + mention.query.length;
+    const next = `${input.slice(0, mention.at)}@${path} ${input.slice(end)}`;
+    const pos = mention.at + path.length + 2;
+    setInput(next);
+    setMention(null);
+    requestAnimationFrame(() => { inputRef.current?.focus(); inputRef.current?.setSelectionRange(pos, pos); });
+  };
+
+  const onInputKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (mention && matches.length) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        setMentionSel((i) => (i + (e.key === 'ArrowDown' ? 1 : matches.length - 1)) % matches.length);
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pickMention(matches[mentionSel] ?? matches[0]); return; }
+    }
+    if (mention && e.key === 'Escape') { e.preventDefault(); setMention(null); return; }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
+  };
+
   const status = STATUS[agent.status] ?? STATUS.idle;
 
   return (
     <div className="w-full h-full bg-surface border-l border-border flex flex-col" data-testid="agent-panel">
       {/* Header */}
-      <div className="h-9 px-3 flex items-center justify-between border-b border-border shrink-0">
+      <div className="relative h-9 px-3 flex items-center justify-between border-b border-border shrink-0">
         <span className="font-mono text-[11px] tracking-[0.12em] text-dim">AGENT</span>
         <div className="flex items-center gap-2.5">
           <span className="flex items-center gap-1.5 text-[11.5px]" style={{ color: agent.status === 'idle' ? '#6b6b6b' : status.color }} data-testid="agent-status">
             <StatusDot color={status.color} pulse={status.pulse} /> {status.label}
           </span>
+          <button onClick={toggleHistory} disabled={agent.isRunning || !projectPath} title="History" data-testid="agent-history"
+            className="p-1 rounded text-dim hover:text-fg hover:bg-surface-hover disabled:opacity-40">
+            <History size={14} />
+          </button>
           {agent.status !== 'idle' && !agent.isRunning && (
             <button onClick={agent.reset} title="New conversation" className="p-1 rounded text-dim hover:text-fg hover:bg-surface-hover">
               <Plus size={14} />
             </button>
           )}
         </div>
+        {history && (
+          <div className="absolute top-full right-2 mt-1 w-[300px] max-h-[320px] overflow-y-auto rounded-lg border border-border-strong bg-surface p-1 shadow-2xl z-20" data-testid="history-list">
+            {history.length === 0 && <div className="px-2.5 py-2 text-[12px] text-dim">No earlier chats in this project.</div>}
+            {history.map((s) => {
+              const st = STATUS[s.status] ?? STATUS.idle;
+              return (
+                <button key={s.id} onClick={() => { setHistory(null); agent.loadSession(s); }}
+                  className="w-full text-left px-2.5 py-1.5 rounded-md hover:bg-surface-hover">
+                  <div className="text-[12px] text-fg truncate">{s.goal.slice(0, 80)}</div>
+                  <div className="flex items-center gap-1.5 text-[10.5px] text-dim">
+                    <StatusDot color={st.color} /> {st.label} · {ago(s.created_at)}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Folder memory */}
@@ -242,9 +327,18 @@ export default function AgentPanel({ projectPath, isIngesting, backendPort = 800
         ) : (
           <Transcript log={agent.log} />
         )}
+        {agent.isRunning && agent.preview && (
+          <div className="pl-3 mt-2.5 font-mono text-[11px] text-dim break-words" data-testid="agent-preview">
+            …{agent.preview.slice(-240)}
+          </div>
+        )}
         {agent.pendingApproval && <ApprovalPrompt approval={agent.pendingApproval} onRespond={agent.respondApproval} />}
       </div>
 
+      {agent.sessionId && (
+        <ChangesReview key={agent.sessionId} sessionId={agent.sessionId} backendPort={backendPort} running={agent.isRunning} onReverted={(p) => onFilesChanged?.(p)}
+          version={agent.artifacts.filter(a => a.kind === 'file_change' && a.session_id === agent.sessionId).length} />
+      )}
       <ArtifactTrail artifacts={agent.artifacts} backendPort={backendPort} />
 
       {/* Composer */}
@@ -271,13 +365,24 @@ export default function AgentPanel({ projectPath, isIngesting, backendPort = 800
             ref={inputRef}
             value={input}
             data-testid="agent-input"
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } }}
+            onChange={(e) => onInputChange(e.target.value, e.target.selectionStart)}
+            onKeyDown={onInputKey}
+            onBlur={() => setMention(null)}
             placeholder={!projectPath ? 'Open a folder first' : agent.isRunning ? 'The agent is working…' : mode.placeholder}
             disabled={agent.isRunning || isIngesting || !projectPath}
             rows={3}
             className="block w-full bg-transparent pl-3 pr-11 py-2.5 text-[13px] resize-none focus:outline-none text-fg placeholder:text-dim disabled:opacity-50"
           />
+          {mention && matches.length > 0 && (
+            <div className="absolute bottom-full left-0 right-0 mb-1 max-h-[200px] overflow-y-auto rounded-lg border border-border-strong bg-surface p-1 shadow-2xl z-10" data-testid="mention-popup">
+              {matches.map((f, i) => (
+                <div key={f} onMouseDown={(e) => { e.preventDefault(); pickMention(f); }}
+                  className={`px-2.5 py-1 rounded-md cursor-pointer font-mono text-[11.5px] truncate ${i === mentionSel ? 'bg-surface-hover text-fg' : 'text-muted'}`}>
+                  {f}
+                </div>
+              ))}
+            </div>
+          )}
           {agent.isRunning ? (
             <button onClick={agent.stop} title="Stop" data-testid="agent-stop"
               className="absolute right-2 bottom-2 flex items-center gap-1 rounded-md bg-danger px-2 py-1 text-[11px] font-semibold text-black hover:brightness-110">

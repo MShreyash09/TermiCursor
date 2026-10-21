@@ -37,7 +37,7 @@ def test_custom_provider_routes_to_its_openai_compatible_endpoint(tmp_path, monk
     config.reload_settings()
     calls = []
 
-    async def fake(self, url, key, model, messages, temperature, label):
+    async def fake(self, url, key, model, messages, temperature, label, on_token=None):
         calls.append((url, key, model, label))
         # (text, token usage, provider extras) — the contract chat() unpacks.
         return "ok", {"input": 1, "output": 1}, {}

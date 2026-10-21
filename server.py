@@ -4,6 +4,7 @@ import os
 import sys
 from typing import Literal
 
+import aiohttp
 import requests
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -106,6 +107,10 @@ class ApproveRequest(BaseModel):
     approved: bool
 
 
+class RevertRequest(BaseModel):
+    path: str | None = None  # None = undo every change in the session
+
+
 class SkillRequest(BaseModel):
     description: str = ""
     body: str = ""
@@ -113,6 +118,13 @@ class SkillRequest(BaseModel):
 
 class OpenProjectRequest(BaseModel):
     project_path: str
+
+
+class CompleteRequest(BaseModel):
+    prefix: str
+    suffix: str = ""
+    language: str | None = None
+    path: str | None = None
 
 
 @app.post("/ingest")
@@ -135,6 +147,34 @@ async def status():
     config.reload_settings()  # pick up Settings-page changes (model, Ollama URL)
     return {**rag.get_ollama_status(), "provider": config.LLM_PROVIDER,
             "model": config.active_model(), "version": __version__, "quota": QUOTA}
+
+
+async def complete_code(prefix: str, suffix: str) -> str:
+    """Fill-in-the-middle completion via Ollama. Returns "" for anything that goes wrong:
+    autocomplete must never show an error."""
+    config.reload_settings()
+    if not config.COMPLETIONS_ENABLED or config.LLM_PROVIDER != "ollama":
+        return ""
+    payload = {
+        "model": config.COMPLETION_MODEL,
+        "prompt": prefix[-2000:],
+        "suffix": suffix[:500],
+        "stream": False,
+        "options": {"temperature": 0, "num_predict": 64, "stop": ["\n\n\n"]},
+    }
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(f"{config.OLLAMA_URL}/api/generate", json=payload,
+                                    timeout=aiohttp.ClientTimeout(total=8)) as resp:
+                resp.raise_for_status()  # e.g. 404 when the model isn't pulled
+                return (await resp.json()).get("response") or ""
+    except Exception:
+        return ""
+
+
+@app.post("/complete")
+async def complete(request: CompleteRequest):
+    return {"completion": await complete_code(request.prefix, request.suffix)}
 
 
 @app.post("/pull")
@@ -203,8 +243,13 @@ async def create_session(request: CreateSessionRequest):
 
 
 @app.get("/sessions")
-async def list_sessions():
-    return {"sessions": db.list_sessions()}
+async def list_sessions(project_path: str | None = None):
+    return {"sessions": db.list_sessions(project_path)}
+
+
+@app.get("/sessions/{session_id}/events")
+async def get_events(session_id: str):
+    return {"events": db.list_events(session_id)}
 
 
 @app.get("/sessions/{session_id}")
@@ -243,6 +288,39 @@ async def get_artifact_file(session_id: str, filename: str):
     return Response(content=body, media_type=media)
 
 
+def _changes_store(session_id: str) -> tuple[ArtifactStore, str]:
+    """The session's store and project folder (from memory, or the DB for older sessions)."""
+    session = SESSIONS.get(session_id)
+    if session is not None:
+        project = session.project_path
+    else:
+        project = next((s["project_path"] for s in db.list_sessions() if s["id"] == session_id), None)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return ArtifactStore(session_id), project
+
+
+@app.get("/sessions/{session_id}/changes")
+async def get_changes(session_id: str):
+    store, project = _changes_store(session_id)
+    return {"changes": store.changes(project)}
+
+
+@app.post("/sessions/{session_id}/revert")
+async def revert_changes(session_id: str, request: RevertRequest):
+    store, project = _changes_store(session_id)
+    session = SESSIONS.get(session_id)
+    # Undoing under a live run would race its writes, so wait until it has stopped.
+    if session is not None and session.status in ("planning", "awaiting_plan_approval", "running", "blocked"):
+        raise HTTPException(status_code=409, detail="The agent is still working; stop it or wait before undoing.")
+    try:
+        return {"reverted": store.revert(project, request.path)}
+    except ValueError as e:  # path was not changed by this session (includes ../ escapes)
+        raise HTTPException(status_code=400, detail=str(e))
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Undo failed: {e}")
+
+
 @app.post("/sessions/{session_id}/approve")
 async def approve(session_id: str, request: ApproveRequest):
     session = SESSIONS.get(session_id)
@@ -276,6 +354,16 @@ async def cancel(session_id: str):
     return {"ok": True}
 
 
+def _record_event(session_id: str, event: dict) -> None:
+    """Persist an event for history replay. Never raises: a DB problem must not break the stream."""
+    if event.get("type") == "token":  # transient preview text, not part of the transcript
+        return
+    try:
+        db.append_event(session_id, event)
+    except Exception as e:
+        print(f"Could not store event: {e!r}", file=sys.stderr)
+
+
 @app.websocket("/ws/agent/{session_id}")
 async def ws_agent(websocket: WebSocket, session_id: str):
     # HTTP middleware doesn't see WebSocket handshakes, so check here.
@@ -291,7 +379,10 @@ async def ws_agent(websocket: WebSocket, session_id: str):
     session._run_task = asyncio.current_task()
     try:
         loop = AgentLoop(session)
+        # The user's own prompt isn't an agent event; store it first so a replay starts with it.
+        _record_event(session_id, {"type": "goal", "goal": session.goal, "agent": session.agent})
         async for event in loop.run():
+            _record_event(session_id, event)
             await websocket.send_json(event)
     except asyncio.CancelledError:
         # Stopped via POST /cancel — status already persisted by session.cancel().
@@ -299,6 +390,7 @@ async def ws_agent(websocket: WebSocket, session_id: str):
     except WebSocketDisconnect:
         print("WebSocket client disconnected")
     except Exception as e:
+        _record_event(session_id, {"type": "error", "message": str(e)})
         try:
             await websocket.send_json({"type": "error", "message": str(e)})
         except Exception:

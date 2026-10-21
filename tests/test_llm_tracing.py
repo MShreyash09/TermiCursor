@@ -9,7 +9,7 @@ from core.agent import llm_client
 
 
 def _fake_dispatch(text="ok", usage=None, extra=None):
-    async def fake(self, messages, temperature):
+    async def fake(self, messages, temperature, on_token=None):
         return text, usage or {"input": 10, "output": 5}, extra or {}
     return fake
 

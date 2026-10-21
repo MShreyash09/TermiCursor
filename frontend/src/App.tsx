@@ -329,6 +329,7 @@ function App() {
         }}
         onDeleteFile={handleDeleteFile}
         projectPath={projectPath}
+        backendPort={backendPort}
       />
     );
   };

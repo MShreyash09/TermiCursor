@@ -3,6 +3,7 @@ import Editor, { loader, type Monaco } from "@monaco-editor/react";
 import * as monaco from "monaco-editor";
 import { X, Trash2 } from "lucide-react";
 import { FileIcon } from "./ui";
+import { backendUrl } from "../backend";
 
 // Configure Monaco to load from node_modules instead of CDN (fixes Electron file:// protocol issue)
 loader.config({ monaco });
@@ -20,6 +21,7 @@ interface EditorViewProps {
   onCloseFile: (path: string) => void;
   onDeleteFile?: (path: string) => void;
   projectPath?: string;
+  backendPort?: number;
 }
 
 // Terminal palette for code: purple keywords, soft green strings, orange numbers, dim comments.
@@ -64,7 +66,7 @@ function defineTheme(m: Monaco) {
   });
 }
 
-const LANGUAGES: Record<string, string> = {
+export const LANGUAGES: Record<string, string> = {
   ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript', mjs: 'javascript', cjs: 'javascript',
   py: 'python', json: 'json', html: 'html', css: 'css', scss: 'scss', md: 'markdown', yml: 'yaml', yaml: 'yaml',
   sh: 'shell', ps1: 'powershell', go: 'go', rs: 'rust', java: 'java', c: 'c', cpp: 'cpp', sql: 'sql', xml: 'xml',
@@ -73,11 +75,13 @@ const LANGUAGES: Record<string, string> = {
 interface EditorPrefs {
   fontSize: number; fontFamily: string; minimap: boolean; wordWrap: boolean;
   lineNumbers: boolean; tabSize: number; bracketPairs: boolean; autoSave: boolean;
+  completionsEnabled: boolean;
 }
 
 const DEFAULT_PREFS: EditorPrefs = {
   fontSize: 14, fontFamily: "'Cascadia Mono', 'Cascadia Code', 'JetBrains Mono', Consolas, monospace",
   minimap: true, wordWrap: false, lineNumbers: true, tabSize: 4, bracketPairs: true, autoSave: false,
+  completionsEnabled: true,
 };
 
 function prefsFrom(s: any, prev: EditorPrefs): EditorPrefs {
@@ -91,10 +95,11 @@ function prefsFrom(s: any, prev: EditorPrefs): EditorPrefs {
     tabSize: s.tabSize ? parseInt(s.tabSize) : prev.tabSize,
     bracketPairs: s.bracketPairs ?? prev.bracketPairs,
     autoSave: s.autoSave ?? prev.autoSave,
+    completionsEnabled: s.completionsEnabled ?? prev.completionsEnabled,
   };
 }
 
-export default function EditorView({ openFiles, activeFilePath, onSelectFile, onCloseFile, onDeleteFile, projectPath = "" }: EditorViewProps) {
+export default function EditorView({ openFiles, activeFilePath, onSelectFile, onCloseFile, onDeleteFile, projectPath = "", backendPort = 0 }: EditorViewProps) {
   const activeFile = openFiles.find(f => f.path === activeFilePath);
   const fileName = activeFile ? activeFile.name : "";
 
@@ -103,6 +108,11 @@ export default function EditorView({ openFiles, activeFilePath, onSelectFile, on
   const [skipConfirmation, setSkipConfirmation] = useState(false);
   const [prefs, setPrefs] = useState<EditorPrefs>(DEFAULT_PREFS);
   const saveTimer = useRef<number | undefined>(undefined);
+  // The completion provider is registered once; it reads the current values through these.
+  const portRef = useRef(backendPort);
+  const enabledRef = useRef(prefs.completionsEnabled);
+  portRef.current = backendPort;
+  enabledRef.current = prefs.completionsEnabled;
 
   // Settings → Auto save: write the file a moment after typing stops.
   const handleChange = (value: string | undefined) => {
@@ -117,6 +127,42 @@ export default function EditorView({ openFiles, activeFilePath, onSelectFile, on
     const api = (window as any).electronAPI;
     api?.loadSettings?.().then((s: any) => setPrefs((p) => prefsFrom(s, p)));
     return api?.onSettingsChanged?.((s: any) => setPrefs((p) => prefsFrom(s, p)));
+  }, []);
+
+  // Ghost-text completions from the backend's /complete (Ollama fill-in-the-middle).
+  useEffect(() => {
+    let last = { key: "", text: "" };  // identical consecutive requests reuse the answer
+    const provider = monaco.languages.registerInlineCompletionsProvider("*", {
+      async provideInlineCompletions(model, pos, _ctx, token) {
+        const none = { items: [] };
+        if (!enabledRef.current || !portRef.current || model.getValueLength() > 200_000) return none;
+        if (pos.column === 1 && !model.getLineContent(pos.lineNumber).trim()) return none;
+        // Debounce: resolves early if Monaco cancels (the user kept typing).
+        await new Promise<void>((resolve) => {
+          const t = window.setTimeout(resolve, 300);
+          token.onCancellationRequested(() => { window.clearTimeout(t); resolve(); });
+        });
+        if (token.isCancellationRequested) return none;
+        const prefix = model.getValueInRange({ startLineNumber: 1, startColumn: 1, endLineNumber: pos.lineNumber, endColumn: pos.column });
+        const suffix = model.getValueInRange({ startLineNumber: pos.lineNumber, startColumn: pos.column, endLineNumber: model.getLineCount(), endColumn: model.getLineMaxColumn(model.getLineCount()) });
+        const key = `${prefix}\u0000${suffix}`;
+        if (key !== last.key) {
+          const ctl = new AbortController();
+          token.onCancellationRequested(() => ctl.abort());
+          try {
+            const res = await fetch(backendUrl(portRef.current, "/complete"), {
+              method: "POST", headers: { "Content-Type": "application/json" }, signal: ctl.signal,
+              body: JSON.stringify({ prefix, suffix, language: model.getLanguageId(), path: model.uri.path }),
+            });
+            last = { key, text: (await res.json()).completion ?? "" };
+          } catch { return none; }  // aborted, backend down: stay silent
+        }
+        if (token.isCancellationRequested || !last.text.trim()) return none;
+        return { items: [{ insertText: last.text, range: new monaco.Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column) }] };
+      },
+      disposeInlineCompletions() {},
+    });
+    return () => provider.dispose();
   }, []);
 
   const handleDeleteClick = (e: React.MouseEvent, file: OpenFile) => {
@@ -212,6 +258,7 @@ export default function EditorView({ openFiles, activeFilePath, onSelectFile, on
               bracketPairColorization: { enabled: prefs.bracketPairs },
               guides: { bracketPairs: false, indentation: true },
               smoothScrolling: true,
+              inlineSuggest: { enabled: true },
               cursorBlinking: "smooth",
               cursorSmoothCaretAnimation: "on",
               padding: { top: 12 },

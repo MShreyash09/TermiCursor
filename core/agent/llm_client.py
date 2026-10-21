@@ -10,6 +10,7 @@ Every call is optionally traced to Langfuse (latency, model, token counts). See
 the tracing block below: it is off unless keys are set, and it never sends
 prompt or output text unless LANGFUSE_TRACE_PROMPTS is explicitly enabled.
 """
+import json
 import os
 import time
 from contextlib import nullcontext
@@ -85,15 +86,16 @@ class LLMClient:
         # even when all three roles share one model.
         self.role = role
 
-    async def chat(self, messages: list[dict], *, temperature: float = 0.1) -> str:
+    async def chat(self, messages: list[dict], *, temperature: float = 0.1, on_token=None) -> str:
+        """`on_token(delta: str)` (sync) switches to streaming; the full text is still returned."""
         with self._span(messages, temperature) as gen:
             t0 = time.perf_counter()
-            text, usage, extra = await self._dispatch(messages, temperature)
+            text, usage, extra = await self._dispatch(messages, temperature, on_token)
             if gen is not None:
                 self._record(gen, text, usage, extra, (time.perf_counter() - t0) * 1000)
             return text
 
-    async def _dispatch(self, messages: list[dict], temperature: float) -> tuple[str, dict, dict]:
+    async def _dispatch(self, messages: list[dict], temperature: float, on_token=None) -> tuple[str, dict, dict]:
         """Returns (text, token usage, provider extras). Provider routing only."""
         provider = config.LLM_PROVIDER
         custom = next((p for p in config.CUSTOM_PROVIDERS if p["name"].lower() == provider), None)
@@ -101,21 +103,35 @@ class LLMClient:
             base = (custom.get("baseUrl") or "https://api.openai.com/v1").rstrip("/")
             return await self._chat_openai_compatible(
                 f"{base}/chat/completions", custom.get("apiKey", ""), custom.get("model", ""),
-                messages, temperature, custom["name"])
+                messages, temperature, custom["name"], on_token)
         if provider != "ollama":
             # Deleted or renamed in Settings: fail loudly instead of silently running on Ollama.
             raise RuntimeError(f"LLM provider '{provider}' is not configured. Pick one in Settings.")
         payload = {
             "model": self.model,
             "messages": messages,
-            "stream": False,
+            "stream": on_token is not None,
             "options": {"temperature": temperature, "num_ctx": config.NUM_CTX},
         }
         url = f"{self.base_url}/api/chat"
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=300)) as resp:
                 resp.raise_for_status()
-                data = await resp.json()
+                if on_token is None:
+                    data = await resp.json()
+                else:  # NDJSON: one chunk per line, the final one (done: true) carries the counters
+                    parts, data = [], {}
+                    async for line in resp.content:
+                        if not line.strip():
+                            continue
+                        data = json.loads(line)
+                        if "error" in data:
+                            raise RuntimeError(f"Ollama error: {data['error']}")
+                        piece = data.get("message", {}).get("content", "")
+                        if piece:
+                            parts.append(piece)
+                            on_token(piece)
+                    data.setdefault("message", {})["content"] = "".join(parts)
         usage = {"input": data.get("prompt_eval_count", 0), "output": data.get("eval_count", 0)}
         # Ollama reports load vs generate separately: a slow first call is usually
         # model load, not slow inference, and only these fields tell them apart.
@@ -124,17 +140,37 @@ class LLMClient:
         return data.get("message", {}).get("content", ""), usage, extra
 
     async def _chat_openai_compatible(self, url: str, api_key: str, model: str, messages: list[dict],
-                                      temperature: float, label: str) -> tuple[str, dict, dict]:
+                                      temperature: float, label: str, on_token=None) -> tuple[str, dict, dict]:
         # Per-role Ollama model names don't exist on cloud APIs; every role uses the provider's model.
         payload = {"model": model, "messages": messages, "temperature": temperature}
+        if on_token is not None:
+            payload |= {"stream": True, "stream_options": {"include_usage": True}}
         headers = {"Authorization": f"Bearer {api_key}"}
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=payload, headers=headers,
                                     timeout=aiohttp.ClientTimeout(total=120)) as resp:
                 if resp.status >= 400:
                     raise RuntimeError(f"{label} API error {resp.status}: {(await resp.text())[:300]}")
-                data = await resp.json()
                 rate = {h[len("x-ratelimit-"):]: resp.headers[h] for h in _RATE_HEADERS if h in resp.headers}
+                if on_token is None:
+                    data = await resp.json()
+                else:  # SSE: "data: {...}" lines, usage arrives in a final chunk, then "data: [DONE]"
+                    parts, usage_chunk = [], {}
+                    async for raw in resp.content:
+                        body = raw.decode("utf-8").strip()
+                        if not body.startswith("data:"):
+                            continue
+                        body = body[5:].strip()
+                        if body == "[DONE]":
+                            break
+                        chunk = json.loads(body)
+                        usage_chunk = chunk.get("usage") or usage_chunk
+                        choices = chunk.get("choices") or [{}]
+                        piece = (choices[0].get("delta") or {}).get("content")
+                        if piece:
+                            parts.append(piece)
+                            on_token(piece)
+                    data = {"choices": [{"message": {"content": "".join(parts)}}], "usage": usage_chunk}
         u = data.get("usage") or {}
         usage = {"input": u.get("prompt_tokens", 0), "output": u.get("completion_tokens", 0)}
         q = QUOTA.setdefault(label.lower(), {"tokens": 0, "requests": 0})

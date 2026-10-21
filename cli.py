@@ -72,11 +72,12 @@ HELP = """[bold white]/model[/]  [grey62]choose the Ollama model[/]
 [bold white]/plan[/]   [grey62]Plan agent — review the plan before coding[/]
 [bold white]/build[/]  [grey62]Build agent — code right away[/]
 [bold white]/ask[/]    [grey62]Ask agent — answer questions, read-only[/]
+[bold white]/undo[/]   [grey62]revert the file changes from the last run[/]
 [bold white]/clear[/]  [grey62]clear the screen[/]
 [bold white]/exit[/]   [grey62]quit[/]
 [bold white]tab[/]     [grey62]cycle Build / Plan / Ask[/]"""
 
-state = {"agent": "build"}
+state = {"agent": "build", "last_store": None}  # last_store: the last run's ArtifactStore, for /undo
 
 
 def agent_color() -> str:
@@ -157,12 +158,22 @@ async def run_agent(project_path: str, goal: str):
     color = agent_color()
 
     loop = AgentLoop(session)
+    state["last_store"] = loop.artifacts
     spinner = Spinner("dots", text=Text("thinking…", style="grey62"), style=color)
     started = time.monotonic()
+    buf = ""   # raw streamed model output for the live preview
 
     with Live(spinner, refresh_per_second=10, console=console, transient=True) as live:
         async for ev in loop.run():
             t = ev.get("type")
+
+            if t == "token":
+                buf += ev["text"]
+                spinner.update(text=Text(buf[-(console.width - 10):].replace("\n", " "), style="grey62"))
+                continue
+            if buf:   # the real thought/tool_call/answer replaces the preview
+                buf = ""
+                spinner.update(text=Text("thinking…", style="grey62"))
 
             if t == "mode":
                 spinner.update(text=Text("planning…" if ev["mode"] == "complex" else "thinking…", style="grey62"))
@@ -210,6 +221,12 @@ async def run_agent(project_path: str, goal: str):
 
     # Persist memory
     project_memory.record_session(session)
+
+
+def undo_last(project_path: str) -> None:
+    store = state["last_store"]
+    done = store.revert(project_path) if store else []
+    section("undo", GREEN if done else WARN, ", ".join(done) if done else "no file changes to undo")
 
 
 async def choose_model() -> None:
@@ -301,6 +318,8 @@ async def main_loop():
                 welcome(project_path)
             elif cmd == '/help':
                 block(Text.from_markup(HELP), ACCENT, title="[bold]Commands[/]")
+            elif cmd == '/undo':
+                undo_last(project_path)
             elif cmd == '/model':
                 await choose_model()
             elif cmd in ('/plan', '/build', '/ask'):

@@ -21,6 +21,7 @@ from .base import Tool, ToolResult
 from .mcp_tools import servers_text
 
 _MAX_SKILL_CHARS = 3_000
+_MAX_RULES_CHARS = 4_000
 
 
 def _skill_dirs(project_path: str) -> list[str]:
@@ -58,9 +59,27 @@ def list_skills(project_path: str) -> dict[str, tuple[str, str]]:
     return found
 
 
-def extensions_text(project_path: str) -> str:
-    """Skills + MCP servers block for the prompts; empty when nothing is installed."""
+def rules_text(project_path: str) -> str:
+    """Project rules (AGENTS.md, then .termicursor/rules.md) for the prompts; read per run."""
     parts = []
+    for rel in ("AGENTS.md", os.path.join(".termicursor", "rules.md")):
+        try:
+            with open(os.path.join(project_path, rel), "r", encoding="utf-8") as f:
+                parts.append(f.read().strip())
+        except OSError:
+            pass
+    text = "\n\n".join(p for p in parts if p)
+    if len(text) > _MAX_RULES_CHARS:
+        text = text[:_MAX_RULES_CHARS] + "\n... (rules truncated)"
+    return f"Project rules (follow these):\n{text}" if text else ""
+
+
+def extensions_text(project_path: str) -> str:
+    """Rules + skills + MCP servers block for the prompts; empty when nothing is installed."""
+    parts = []
+    rules = rules_text(project_path)
+    if rules:
+        parts.append(rules)
     skills = list_skills(project_path)
     if skills:
         parts.append("Skills (instructions you can load with load_skill when relevant):\n"

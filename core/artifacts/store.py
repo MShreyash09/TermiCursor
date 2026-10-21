@@ -1,10 +1,34 @@
+import hashlib
 import json
 import os
+import shutil
 from typing import Optional
 
 from core.config import ARTIFACTS_DIR, safe_join
 from core.persistence import db
 from .models import Artifact
+
+PREVIEW_LIMIT = 1_000_000  # bytes; bigger originals are still restorable, just not sent for the diff view
+
+
+def _key(rel: str) -> str:
+    return os.path.normpath(rel).replace("\\", "/")
+
+
+def _preview(b: bytes | None) -> str | None:
+    if b is None or len(b) > PREVIEW_LIMIT:
+        return None
+    try:
+        return b.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
+def _read(path: str) -> bytes | None:
+    if not os.path.isfile(path):
+        return None
+    with open(path, "rb") as f:
+        return f.read()
 
 
 class ArtifactStore:
@@ -97,3 +121,72 @@ class ArtifactStore:
         except ValueError:
             return None
         return full if os.path.isfile(full) else None
+
+    # ── Undo: originals are copied to <dir>/snapshots/<hash> (or <hash>.new = "did not exist")
+    # the first time the session changes a file; file_change artifacts say which paths changed.
+    def _snap(self, key: str) -> str:
+        return os.path.join(self.dir, "snapshots", hashlib.sha1(key.encode()).hexdigest()[:16])
+
+    def snapshot_original(self, project_root: str, rel: str) -> None:
+        """Call before a tool changes `rel`. Once per path; unreadable files are skipped."""
+        key = _key(rel)
+        snap = self._snap(key)
+        try:
+            src = safe_join(project_root, key)
+            if os.path.exists(snap) or os.path.exists(snap + ".new"):
+                return
+            os.makedirs(os.path.dirname(snap), exist_ok=True)
+            if os.path.isfile(src):
+                try:
+                    shutil.copyfile(src, snap)
+                except OSError:
+                    if os.path.exists(snap):
+                        os.remove(snap)
+                    raise
+            else:
+                open(snap + ".new", "wb").close()
+        except (OSError, ValueError):
+            pass
+
+    def _diffs(self, project_root: str):
+        """(key, status, original bytes, current bytes, abs path) for files that differ from the snapshot."""
+        keys = dict.fromkeys(_key(a["data"]["path"]) for a in self.list_for_session()
+                             if a["kind"] == "file_change" and a["data"].get("path"))
+        for key in keys:
+            snap = self._snap(key)
+            try:
+                existed = os.path.exists(snap)
+                if not existed and not os.path.exists(snap + ".new"):
+                    continue
+                abs_path = safe_join(project_root, key)
+                orig, cur = (_read(snap) if existed else None), _read(abs_path)
+            except (OSError, ValueError):
+                continue
+            if orig != cur:
+                yield key, ("created" if not existed else "deleted" if cur is None else "modified"), orig, cur, abs_path
+
+    def changes(self, project_root: str) -> list[dict]:
+        out = []
+        for key, status, orig, cur, _ in self._diffs(project_root):
+            o, c = _preview(orig), _preview(cur)
+            out.append({"path": key, "status": status, "original": o, "current": c,
+                        "no_preview": (orig is not None and o is None) or (cur is not None and c is None)})
+        return out
+
+    def revert(self, project_root: str, path: str | None = None) -> list[str]:
+        """Restore one changed file (or all). Only paths this session changed are touched."""
+        key = _key(path) if path is not None else None
+        done = []
+        for k, status, orig, _, abs_path in list(self._diffs(project_root)):
+            if key is not None and k != key:
+                continue
+            if status == "created":
+                os.remove(abs_path)
+            else:
+                os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+                with open(abs_path, "wb") as f:
+                    f.write(orig)
+            done.append(k)
+        if key is not None and not done:
+            raise ValueError(f"No changes to undo for {path!r}")
+        return done

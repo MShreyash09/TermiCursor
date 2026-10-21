@@ -213,6 +213,13 @@ description: How this repo writes FastAPI endpoints
 Use pydantic request models, return dicts, ...
 ```
 
+**Project rules**: put standing instructions in `AGENTS.md` (project root) and/or
+`.termicursor/rules.md`. Both are read at the start of every run (first 4000 characters)
+and added to the agent's prompt.
+
+**@-mentions**: type `@` in the agent input to pick a project file. Mentioned files are
+read for the agent before it starts.
+
 **MCP servers** go in `settings.json` under `mcpServers`, in the same format Claude Desktop uses.
 Each entry is either a command (stdio) or a `url` (streamable HTTP):
 
@@ -238,6 +245,7 @@ when you use MCP. Multi-step skill/MCP work needs a model of about 14B parameter
 *   **Private by Default:** With Ollama, code, embeddings and inference stay on your machine (see *What goes over the network* above).
 *   **Syntax-Aware Parsing:** Code-aware chunking ensures logical components (functions, classes) are kept intact.
 *   **Database Workspace Isolation:** Every project folder receives a unique path-hashed Qdrant collection to completely avoid data mix-ups.
+*   **Inline Completions:** Tab-to-accept ghost-text suggestions in the editor from a small local Ollama model (default `qwen2.5-coder:1.5b`; Ollama provider only, toggle in Settings).
 *   **Proactive Checks:** Validates model availability and connectivity to prevent standard connection tracebacks.
 *   **Windows Terminal Safe:** Integrated UTF-8 reconfiguration protects against command-line character rendering crashes.
 

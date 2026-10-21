@@ -42,6 +42,12 @@ CREATE TABLE IF NOT EXISTS artifacts (
     data       TEXT,
     created_at REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS events (
+    session_id TEXT NOT NULL,
+    seq        INTEGER NOT NULL,
+    payload    TEXT NOT NULL,
+    PRIMARY KEY (session_id, seq)
+);
 """
 
 
@@ -78,10 +84,30 @@ def upsert_session(session: dict) -> None:
         )
 
 
-def list_sessions() -> list[dict]:
+def list_sessions(project_path: str | None = None) -> list[dict]:
     with _conn() as conn:
-        rows = conn.execute("SELECT * FROM sessions ORDER BY created_at DESC").fetchall()
+        if project_path is None:
+            rows = conn.execute("SELECT * FROM sessions ORDER BY created_at DESC").fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM sessions WHERE project_path=? ORDER BY created_at DESC",
+                                (project_path,)).fetchall()
     return [dict(r) for r in rows]
+
+
+def append_event(session_id: str, event: dict) -> None:
+    """Store one WS event so a finished session's transcript can be replayed after a reload."""
+    with _conn() as conn:
+        conn.execute(
+            "INSERT INTO events (session_id, seq, payload) "
+            "SELECT ?, COALESCE(MAX(seq) + 1, 0), ? FROM events WHERE session_id=?",
+            (session_id, json.dumps(event), session_id),
+        )
+
+
+def list_events(session_id: str) -> list[dict]:
+    with _conn() as conn:
+        rows = conn.execute("SELECT payload FROM events WHERE session_id=? ORDER BY seq", (session_id,)).fetchall()
+    return [json.loads(r["payload"]) for r in rows]
 
 
 def replace_tasks(session_id: str, steps: list[dict]) -> None:

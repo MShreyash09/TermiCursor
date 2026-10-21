@@ -60,6 +60,8 @@ export default function SettingsPage({ quota, port }: { quota?: Record<string, a
     terminalShell: 'PowerShell',
     ollamaModel: 'qwen2.5-coder:3b',
     ollamaUrl: 'http://localhost:11434',
+    completionsEnabled: true,
+    completionModel: 'qwen2.5-coder:1.5b',
     autoIngest: true,
     llmProvider: 'ollama',
     customProviders: [] as Provider[],
@@ -403,6 +405,8 @@ export default function SettingsPage({ quota, port }: { quota?: Record<string, a
         { label: 'Tab size', description: 'Spaces per indentation level.', control: <Dropdown value={String(settings.tabSize)} options={['2', '4', '8']} onChange={(v) => updateSetting('tabSize', v)} /> },
         { label: 'Bracket pair colors', description: 'Color matching brackets.', control: <Toggle checked={settings.bracketPairs} onChange={(v) => updateSetting('bracketPairs', v)} /> },
         { label: 'Auto save', description: 'Save files a moment after you stop typing.', control: <Toggle checked={settings.autoSave} onChange={(v) => updateSetting('autoSave', v)} /> },
+        { label: 'Inline completions', description: 'Ghost-text suggestions while you type; press Tab to accept. Ollama provider only.', control: <Toggle checked={settings.completionsEnabled} onChange={(v) => updateSetting('completionsEnabled', v)} /> },
+        { label: 'Completion model', description: 'Installed Ollama model with fill-in-the-middle support (e.g. qwen2.5-coder). Nothing is shown until it is pulled.', control: <input type="text" list="ollama-models" value={settings.completionModel || ''} onChange={(e) => updateSetting('completionModel', e.target.value)} className={`${inputClass} w-56 font-mono`} /> },
       ],
     },
     {

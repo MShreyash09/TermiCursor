@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import type {
-  AgentKind, AgentEvent, AgentMode, TaskStep, AgentArtifact, LogLine, PendingApproval, SessionStatus,
+  AgentKind, AgentEvent, AgentMode, TaskStep, AgentArtifact, LogLine, PendingApproval, SessionStatus, SessionSummary,
 } from '../types/agent';
 import { backendUrl } from '../backend';
 
@@ -11,6 +11,7 @@ interface UseAgentSocket {
   steps: TaskStep[];
   artifacts: AgentArtifact[];
   log: LogLine[];
+  preview: string;   // live raw model output for the current turn, cleared by the next real event
   pendingApproval: PendingApproval | null;
   isRunning: boolean;
   start: (goal: string, agent?: AgentKind) => Promise<void>;
@@ -18,6 +19,7 @@ interface UseAgentSocket {
   respondApproval: (approved: boolean) => Promise<void>;
   stop: () => Promise<void>;
   reset: () => void;
+  loadSession: (s: SessionSummary) => Promise<void>;
 }
 
 let logSeq = 0;
@@ -30,6 +32,7 @@ export function useAgentSocket(backendPort: number, projectPath: string): UseAge
   const [steps, setSteps] = useState<TaskStep[]>([]);
   const [artifacts, setArtifacts] = useState<AgentArtifact[]>([]);
   const [log, setLog] = useState<LogLine[]>([]);
+  const [preview, setPreview] = useState('');
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const sessionRef = useRef<string | null>(null);
@@ -57,7 +60,12 @@ export function useAgentSocket(backendPort: number, projectPath: string): UseAge
   }, [backendPort]);
 
   const applyEvent = useCallback((ev: AgentEvent) => {
+    if (ev.type === 'token') { setPreview(p => p + ev.text); return; }
+    setPreview('');
     switch (ev.type) {
+      case 'goal':
+        pushLog({ kind: 'goal', text: ev.goal, agent: ev.agent });
+        break;
       case 'mode':
         setMode(ev.mode);
         pushLog({ kind: 'info', text: ev.mode === 'simple' ? 'Working on it directly' : 'Planning the steps first' });
@@ -113,7 +121,7 @@ export function useAgentSocket(backendPort: number, projectPath: string): UseAge
     }
     // Only per-run state resets here; the transcript and artifacts carry across prompts until
     // "New conversation" (reset) so earlier messages stay readable.
-    setSteps([]); setPendingApproval(null); setMode(null);
+    setSteps([]); setPendingApproval(null); setMode(null); setPreview('');
     sawDoneRef.current = false;
     setStatus('planning');
     pushLog({ kind: 'goal', text: goal, agent });
@@ -225,10 +233,34 @@ export function useAgentSocket(backendPort: number, projectPath: string): UseAge
     setSteps([]); setArtifacts([]); setLog([]); setPendingApproval(null);
   }, []);
 
+  // Show a past session by feeding its stored events through applyEvent, exactly like the live socket.
+  // Read-only: a follow-up prompt goes through start() as a new session.
+  const loadSession = useCallback(async (s: SessionSummary) => {
+    let events: AgentEvent[];
+    try {
+      const resp = await fetch(backendUrl(backendPort, `/sessions/${s.id}/events`));
+      if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
+      events = (await resp.json()).events;
+    } catch (e: any) {
+      pushLog({ kind: 'error', text: `Could not load that session: ${e.message}` });
+      return;
+    }
+    wsRef.current?.close();
+    setSteps([]); setArtifacts([]); setLog([]); setPendingApproval(null); setMode(null);
+    // Sessions from before history existed have no stored events: show just their prompt.
+    if (!events.length) events = [{ type: 'goal', goal: s.goal, agent: 'build' }];
+    events.forEach(applyEvent);
+    setSessionId(s.id); sessionRef.current = s.id;
+    // A run that ended mid-way (app closed, crash) never stored a session_done; its row status is the truth.
+    setStatus(s.status === 'done' || s.status === 'error' ? s.status : 'cancelled');
+    setPendingApproval(null);
+    refreshArtifacts(s.id);
+  }, [backendPort, applyEvent, pushLog, refreshArtifacts]);
+
   const isRunning = status === 'planning' || status === 'running' || status === 'blocked'
     || status === 'awaiting_plan_approval';
   return {
-    sessionId, status, mode, steps, artifacts, log, pendingApproval, isRunning,
-    start, reviewPlan, respondApproval, stop, reset,
+    sessionId, status, mode, steps, artifacts, log, preview, pendingApproval, isRunning,
+    start, reviewPlan, respondApproval, stop, reset, loadSession,
   };
 }

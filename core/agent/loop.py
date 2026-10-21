@@ -7,6 +7,8 @@ Event shapes (all have a "type"):
   plan            {steps: [...]}
   plan_review     {steps: [...]}   (plan mode: waiting for approve/revise/reject)
   task_update     {step_id, status, description}
+  token           {step_id, text}   (live raw model output, a delta; transient preview, replaced by
+                                     the thought/tool_call/step_done that follows)
   thought         {step_id, text}
   tool_call       {step_id, call_id, tool, args, risk}
   approval_needed {step_id, call_id, tool, args}
@@ -16,6 +18,7 @@ Event shapes (all have a "type"):
   session_done    {status}
   error           {message}
 """
+import asyncio
 import json
 import os
 import uuid
@@ -312,7 +315,16 @@ class AgentLoop:
         for _ in range(max_iters):
             if s.cancelled:
                 return
-            turn = await self._get_valid_turn(messages)
+            # Run the model call as a task so its token callback can feed this generator.
+            tokens: asyncio.Queue = asyncio.Queue()
+            call = asyncio.create_task(self._get_valid_turn(messages, tokens.put_nowait))
+            call.add_done_callback(lambda _: tokens.put_nowait(None))   # sentinel: call finished
+            try:
+                while (text := await tokens.get()) is not None:
+                    yield {"type": "token", "step_id": step.id, "text": text}
+                turn = call.result()   # re-raises the call's exception
+            finally:
+                call.cancel()   # no-op once done; on Stop / generator close it ends the HTTP request
             if turn is None:
                 step.status = "failed"
                 step.result = "Agent produced unparseable output repeatedly."
@@ -407,9 +419,9 @@ class AgentLoop:
         yield {"type": "task_update", "step_id": step.id, "status": step.status,
                "description": step.description}
 
-    async def _get_valid_turn(self, messages: list[dict]):
+    async def _get_valid_turn(self, messages: list[dict], on_token=None):
         for attempt in range(MAX_JSON_RETRIES + 1):
-            raw = await self.llm.chat(messages)
+            raw = await self.llm.chat(messages, on_token=on_token)
             try:
                 return parse_agent_output(raw)
             except ProtocolError as e:
@@ -485,6 +497,8 @@ class AgentLoop:
                         "output": result.to_context_str()}, result)
                 return
 
+        if action.tool in _DEDUP_TOOLS:
+            self.artifacts.snapshot_original(s.project_path, action.args.get("path", ""))  # for undo
         result = await tool.run(validated, project_root=s.project_path)
         if result.success and action.tool in ("read_file", "edit_file", "write_file"):
             self._known_files.add(_norm(action.args.get("path", "")))

@@ -197,6 +197,24 @@ function createWindow() {
     }
   });
 
+  // Recursive file list for @-mentions: relative paths, capped, same skip list as the backend's grep.
+  const SKIP_DIRS = new Set(['.git', 'node_modules', '__pycache__', 'venv', '.venv', 'dist', 'build', '.next',
+    '.cache', 'coverage', '.idea', '.vscode', '.pytest_cache', '.mypy_cache']);
+  ipcMain.handle('dialog:listFiles', async (event, root, cap = 2000) => {
+    const out = [];
+    const walk = async (dir) => {
+      let entries;
+      try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return; }
+      for (const ent of entries) {
+        if (out.length >= cap) return;
+        if (ent.isDirectory()) { if (!SKIP_DIRS.has(ent.name)) await walk(path.join(dir, ent.name)); }
+        else out.push(path.relative(root, path.join(dir, ent.name)).split(path.sep).join('/'));
+      }
+    };
+    await walk(root);
+    return out;
+  });
+
   ipcMain.handle('dialog:readFile', async (event, filePath) => {
     try {
       return await fs.readFile(filePath, 'utf-8');

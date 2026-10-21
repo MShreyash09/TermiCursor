@@ -51,12 +51,16 @@ def reload_settings() -> None:
     stale copy. Empty strings (e.g. a half-typed field) fall back to defaults."""
     global LLM_PROVIDER, LLM_MODEL, OLLAMA_URL
     global ROUTER_MODEL, PLANNER_MODEL, EXECUTOR_MODEL, CUSTOM_PROVIDERS
+    global COMPLETIONS_ENABLED, COMPLETION_MODEL
     s = load_settings()
     LLM_PROVIDER = (s.get("llmProvider") or os.getenv("LLM_PROVIDER") or "ollama").lower()
     # OpenAI-compatible APIs added in Settings: [{name, apiKey, baseUrl, model}]
     CUSTOM_PROVIDERS = [p for p in (s.get("customProviders") or []) if isinstance(p, dict) and p.get("name")]
     LLM_MODEL = s.get("ollamaModel") or os.getenv("OLLAMA_LLM_MODEL") or "qwen2.5-coder:3b"
     OLLAMA_URL = s.get("ollamaUrl") or os.getenv("OLLAMA_URL") or "http://localhost:11434"
+    # Inline (ghost-text) editor completions: Ollama only, model must already be pulled.
+    COMPLETIONS_ENABLED = s.get("completionsEnabled", True) is not False
+    COMPLETION_MODEL = s.get("completionModel") or "qwen2.5-coder:1.5b"
     # Role-based models
     models = s.get("models") or {}
     ROUTER_MODEL = models.get("router") or LLM_MODEL

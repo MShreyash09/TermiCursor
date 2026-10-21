@@ -25,7 +25,7 @@ class RepeatingLLM:
     def __init__(self):
         self.calls = 0
 
-    async def chat(self, messages, *, temperature=0.1):
+    async def chat(self, messages, *, temperature=0.1, on_token=None):
         self.calls += 1
         return json.dumps({
             "thought": "writing the file",

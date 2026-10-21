@@ -23,11 +23,21 @@ export interface AgentArtifact {
   created_at: number;
 }
 
+export interface FileChange {
+  path: string;
+  status: 'modified' | 'created' | 'deleted';
+  original: string | null;
+  current: string | null;
+  no_preview: boolean;
+}
+
 export type AgentEvent =
+  | { type: 'goal'; goal: string; agent: AgentKind }   // stored only (never sent live): starts a replayed transcript
   | { type: 'mode'; mode: AgentMode }
   | { type: 'plan'; steps: TaskStep[] }
   | { type: 'plan_review'; steps: TaskStep[] }
   | { type: 'task_update'; step_id: string; status: StepStatus; description: string }
+  | { type: 'token'; step_id: string; text: string }
   | { type: 'thought'; step_id: string; text: string }
   | { type: 'tool_call'; step_id: string; call_id: string; tool: string; args: Record<string, any>; risk: Risk }
   | { type: 'approval_needed'; step_id: string; call_id: string; tool: string; args: Record<string, any> }
@@ -52,6 +62,14 @@ export interface PendingApproval {
   call_id: string;
   tool: string;
   args: Record<string, any>;
+}
+
+// A row of GET /sessions (the History list).
+export interface SessionSummary {
+  id: string;
+  goal: string;
+  status: SessionStatus;
+  created_at: number;
 }
 
 // Per-folder persistent memory summary (POST /projects/open).

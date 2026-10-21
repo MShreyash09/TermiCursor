@@ -74,3 +74,27 @@ def test_skills_api_crud():
         assert client.put(f"/skills/{bad}", json={}).status_code in (400, 404, 405)
     assert client.delete("/skills/api-style").status_code == 200
     assert all(s["name"] != "api-style" for s in client.get("/skills").json())
+
+
+def test_project_rules_injected():
+    proj = tempfile.mkdtemp()
+    assert "Project rules" not in skill_tool.extensions_text(proj)
+    with open(os.path.join(proj, "AGENTS.md"), "w", encoding="utf-8") as f:
+        f.write("Always use tabs." + "x" * 5000)
+    os.makedirs(os.path.join(proj, ".termicursor"))
+    with open(os.path.join(proj, ".termicursor", "rules.md"), "w", encoding="utf-8") as f:
+        f.write("No semicolons.")
+    text = skill_tool.extensions_text(proj)
+    assert text.startswith("Project rules") and "Always use tabs." in text and "(rules truncated)" in text
+    from core.agent.prompts import PLANNER_PROMPT
+    assert "Always use tabs." in PLANNER_PROMPT.format(project_tree="", goal="g", memories="", extensions=text)
+
+
+def test_at_mentions_resolve():
+    from core.agent.context import mentioned_files
+    proj = tempfile.mkdtemp()
+    os.makedirs(os.path.join(proj, "src"))
+    open(os.path.join(proj, "src", "app.py"), "w").close()
+    assert mentioned_files(proj, "look at @src/app.py please") == ["src/app.py"]
+    assert mentioned_files(proj, "look at @src\\app.py") == ["src/app.py"]
+    assert mentioned_files(proj, "see @app.py") == ["src/app.py"]

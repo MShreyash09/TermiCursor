@@ -45,7 +45,7 @@ jobs:
           fi
           echo "OK"
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
           cache: pip
@@ -78,7 +78,7 @@ jobs:
         run: |
           (cd frontend && npm ci --ignore-scripts && npm audit --audit-level=high)
           (cd landing-page && npm ci --ignore-scripts && npm audit --audit-level=high)
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
       - name: pip-audit

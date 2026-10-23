@@ -3,7 +3,9 @@
 // No Ollama model calls needed; runs its own backend and Vite like run-e2e.mjs.
 import fs from 'node:fs';
 import path from 'node:path';
-import { FRONTEND, launch } from './harness.mjs';
+import gifenc from 'gifenc';
+const { GIFEncoder } = gifenc;
+import { FRONTEND, REPO, launch } from './harness.mjs';
 
 const OUT = process.env.E2E_OUT || path.join(FRONTEND, 'e2e', 'screenshots');
 fs.mkdirSync(OUT, { recursive: true });
@@ -139,6 +141,9 @@ try {
 
   // 7. Model picker in the agent composer
   await win.keyboard.press('Escape');
+  // The shortcut overview (Ctrl+/) has no Esc handler; close it via its backdrop so it can't block clicks.
+  const overview = win.locator('div.backdrop-blur-sm');
+  if (await overview.count()) await overview.click({ position: { x: 5, y: 5 } });
   const picker = win.getByTestId('model-picker');
   await picker.waitFor();
   const opts = await picker.locator('option').allTextContents();
@@ -159,6 +164,69 @@ try {
   check('later Settings edits keep the picked model', saved().llmProvider === 'ollama' && saved().ollamaModel === 'qwen2.5-coder:3b');
   await win.getByRole('switch').first().click();
   await shot('s5-model-picker');
+
+  // 8. Companion character: GIF-only uploads, shown when enabled, reacts to run status
+  const GIF = 'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+  const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+  const walkInput = win.getByTestId('mascot-file-walk');
+  await walkInput.setInputFiles({ name: 'renamed.gif', mimeType: 'image/gif', buffer: Buffer.from(PNG, 'base64') });
+  check('a PNG renamed to .gif is rejected', await until(() => win.getByTestId('mascot-error-walk').isVisible()));
+  await walkInput.setInputFiles({ name: 'hero.gif', mimeType: 'image/gif', buffer: Buffer.from(GIF, 'base64') });
+  await until(() => saved().mascot?.files?.walk?.name === 'hero.gif');
+  check('a GIF upload is stored on disk', fs.existsSync(path.join(userData, 'mascot', 'walk.gif')));
+  const ipcReject = await win.evaluate((b) => window.electronAPI.saveMascot('idle', Uint8Array.from(atob(b), c => c.charCodeAt(0))), PNG);
+  check('main process rejects non-GIF bytes', ipcReject.success === false, JSON.stringify(ipcReject));
+  await win.getByTestId('setting-mascot').click();
+  check('companion appears when enabled', await until(() => win.getByTestId('mascot').isVisible()));
+  const status = (s) => win.evaluate((s) => window.dispatchEvent(new CustomEvent('agent-status', { detail: s })), s);
+  await status('done');   // straight from idle, like opening a past chat: no reaction
+  await win.waitForTimeout(300);
+  check('no celebration without a run', await win.getByTestId('mascot-bubble').count() === 0);
+  await status('running');
+  await status('done');
+  check('celebrates when a run finishes', await until(() => win.getByTestId('mascot-bubble').textContent().then(t => t === 'Done!')));
+  await shot('s6-mascot');
+
+  // 9. Remove background: white canvas -> transparent, cropped, enclosed white "eye" kept
+  const W = 20, enc = GIFEncoder(), idx = new Uint8Array(W * W);   // 0 = white, 1 = black
+  for (let y = 7; y <= 12; y++) for (let x = 7; x <= 12; x++) {
+    const corner = (x === 7 || x === 12) && (y === 7 || y === 12);
+    idx[y * W + x] = corner || (x === 9 && y === 9) ? 0 : 1;
+  }
+  for (let f = 0; f < 2; f++) enc.writeFrame(idx, W, W, { palette: [[255, 255, 255], [0, 0, 0]], delay: 100 });
+  enc.finish();
+  const inspect = () => win.evaluate(async () => {
+    const url = await window.electronAPI.loadMascot('walk');
+    const d = new ImageDecoder({ data: await (await fetch(url)).arrayBuffer(), type: 'image/gif' });
+    await d.tracks.ready;
+    const { image } = await d.decode({ frameIndex: 0 });
+    const c = new OffscreenCanvas(image.displayWidth, image.displayHeight).getContext('2d');
+    c.drawImage(image, 0, 0);
+    const px = (x, y) => Array.from(c.getImageData(x, y, 1, 1).data);
+    return { w: image.displayWidth, h: image.displayHeight, frames: d.tracks.selectedTrack.frameCount, corner: px(0, 0), edge: px(1, 0), eye: px(2, 2) };
+  });
+  const clearBg = async () => {
+    const v = saved().mascot.files.walk.v;
+    await win.getByTestId('mascot-clear-bg-walk').click();
+    return until(() => saved().mascot.files.walk.v !== v, 60000);
+  };
+  await walkInput.setInputFiles({ name: 'square.gif', mimeType: 'image/gif', buffer: Buffer.from(enc.bytes()) });
+  await until(() => saved().mascot?.files?.walk?.name === 'square.gif');
+  await win.waitForTimeout(300);   // preview loads
+  check('remove background saves a new GIF', await clearBg());
+  const sq = await inspect();
+  check('background is transparent and cropped to the character', sq.w === 6 && sq.h === 6 && sq.frames === 2 && sq.corner[3] === 0 && sq.edge.join() === '0,0,0,255', JSON.stringify(sq));
+  check('enclosed white pixels (eyes) are kept', sq.eye.join() === '255,255,255,255', JSON.stringify(sq.eye));
+
+  await walkInput.setInputFiles(path.join(REPO, 'gif.gif'));
+  await until(() => saved().mascot?.files?.walk?.name === 'gif.gif');
+  await win.waitForTimeout(500);
+  check('remove background on the sample GIF', await clearBg());
+  const real = await inspect();
+  check('sample GIF is cut out and cropped', real.w < 1600 && real.h < 1200 && real.frames === 12 && real.corner[3] === 0, JSON.stringify(real));
+  await win.getByTestId('mascot-clear-bg-walk').click();
+  check('an already transparent GIF is reported', await until(() => win.getByTestId('mascot-error-walk').textContent().then(t => t.includes('already has a transparent'))));
+  await shot('s7-mascot-cutout');
 
   check('no JavaScript errors', errors.length === 0, errors.slice(0, 5).join(' | '));
 } catch (e) {

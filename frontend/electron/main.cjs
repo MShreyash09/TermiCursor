@@ -265,6 +265,38 @@ function createWindow() {
     }
   });
 
+  // Companion GIFs live on disk, not in settings.json: they can be several MB and settings
+  // are rewritten and broadcast on every change. Only real GIFs are accepted (magic bytes).
+  const MASCOT_STATES = ['walk', 'idle', 'done', 'error'];
+  const mascotPath = (state) => path.join(app.getPath('userData'), 'mascot', `${state}.gif`);
+  ipcMain.handle('mascot:save', async (event, state, bytes) => {
+    if (!MASCOT_STATES.includes(state)) return { success: false, error: 'Unknown state.' };
+    try {
+      if (!bytes) {
+        await fs.rm(mascotPath(state), { force: true });
+        return { success: true };
+      }
+      const buf = Buffer.from(bytes);
+      const magic = buf.subarray(0, 6).toString('latin1');
+      if (magic !== 'GIF87a' && magic !== 'GIF89a') return { success: false, error: 'Only .gif files are supported.' };
+      if (buf.length > 10 * 1024 * 1024) return { success: false, error: 'GIF is larger than 10 MB.' };
+      await fs.mkdir(path.dirname(mascotPath(state)), { recursive: true });
+      await fs.writeFile(mascotPath(state), buf);
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle('mascot:load', async (event, state) => {
+    if (!MASCOT_STATES.includes(state)) return null;
+    try {
+      return `data:image/gif;base64,${(await fs.readFile(mascotPath(state))).toString('base64')}`;
+    } catch {
+      return null;
+    }
+  });
+
   ipcMain.handle('dialog:deleteFile', async (event, filePath) => {
     try {
       await fs.unlink(filePath);

@@ -179,6 +179,11 @@ export default function AgentPanel({ projectPath, isIngesting, backendPort = 800
     prevStatus.current = agent.status;
   }, [agent.status, refreshMemory]);
 
+  // The companion character (Mascot.tsx) follows the run's status.
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('agent-status', { detail: agent.status }));
+  }, [agent.status]);
+
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [agent.log, agent.preview, agent.steps, agent.pendingApproval, agent.status]);

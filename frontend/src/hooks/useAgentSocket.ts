@@ -148,7 +148,12 @@ export function useAgentSocket(backendPort: number, projectPath: string): UseAge
     const ws = new WebSocket(backendUrl(backendPort, `/ws/agent/${id}`, { ws: true }));
     wsRef.current = ws;
     ws.onmessage = (event) => {
-      try { applyEvent(JSON.parse(event.data) as AgentEvent); } catch { /* ignore */ }
+      try {
+        const ev = JSON.parse(event.data) as AgentEvent;
+        applyEvent(ev);
+        // Live events only (not history replays): the companion character reacts to these.
+        if (ev.type !== 'token') window.dispatchEvent(new CustomEvent('agent-event', { detail: ev }));
+      } catch { /* ignore */ }
     };
     ws.onerror = () => {
       pushLog({ kind: 'error', text: 'WebSocket error — is the backend running?' });

@@ -11,6 +11,7 @@ import SettingsPage from './components/SettingsPage';
 import StatusBar from './components/StatusBar';
 import CommandPalette from './components/CommandPalette';
 import TerminalPanel from './components/TerminalPanel';
+import Mascot from './components/Mascot';
 import { Kbd } from './components/ui';
 import { backendUrl, setBackendToken } from './backend';
 import { SHORTCUT_ACTIONS, findAction, useKeybindings, type ShortcutId } from './shortcuts';
@@ -344,6 +345,7 @@ function App() {
         onToggleAgent={toggleAiChat}
         onShowShortcuts={() => setShowShortcuts(true)}
       />
+      <Mascot />
       <TitleBar projectName={projectPath.split(/[\\/]/).filter(Boolean).pop()} />
 
       {updateAvailable && (

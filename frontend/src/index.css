@@ -87,6 +87,16 @@
 .tc-markdown strong { color: #fff; }
 .tc-markdown h1, .tc-markdown h2, .tc-markdown h3 { font-size: 13px; font-weight: 600; margin: 0.6em 0 0.3em; color: #fff; }
 
+/* Companion character (Mascot.tsx) */
+@keyframes mascot-hop { 0%, 100% { transform: translateY(0); } 40% { transform: translateY(-22px); } }
+@keyframes mascot-shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-6px) rotate(-4deg); } 75% { transform: translateX(6px) rotate(4deg); } }
+@keyframes mascot-bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+.mascot-hop { animation: mascot-hop 0.5s ease-out 2; }
+.mascot-shake { animation: mascot-shake 0.4s ease-in-out 3; }
+.mascot-bounce { animation: mascot-bounce 0.6s ease-in-out infinite; }
+.mascot-sleep { opacity: 0.6; transform: rotate(-8deg); transition: opacity 1s, transform 1s; }
+
 @media (prefers-reduced-motion: reduce) {
   .tc-caret { animation: none; }
+  .mascot-hop, .mascot-shake, .mascot-bounce { animation: none; }
 }

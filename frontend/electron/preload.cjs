@@ -16,7 +16,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('settings-changed', listener);
   },
   loadSettings: () => ipcRenderer.invoke('dialog:loadSettings'),
-  getBackendPort: () => ipcRenderer.invoke('getBackendPort'),
+  saveMascot: (state, bytes) => ipcRenderer.invoke('mascot:save', state, bytes),
+  loadMascot: (state) => ipcRenderer.invoke('mascot:load', state),
+  getBackendPort:() => ipcRenderer.invoke('getBackendPort'),
   getBackendToken: () => ipcRenderer.invoke('getBackendToken'),
   deleteFile: (filePath) => ipcRenderer.invoke('dialog:deleteFile', filePath),
   saveRecentFolder: (folderPath) => ipcRenderer.invoke('dialog:saveRecentFolder', folderPath),

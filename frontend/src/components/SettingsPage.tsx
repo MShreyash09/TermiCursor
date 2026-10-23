@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react';
-import { Type, Terminal, Cpu, Keyboard, Trash2, Plus, Search, Check, ShieldCheck, Plug, Eye, EyeOff, Pencil, RotateCcw } from 'lucide-react';
+import { Type, Terminal, Cpu, Keyboard, Trash2, Plus, Search, Check, ShieldCheck, Plug, Eye, EyeOff, Pencil, RotateCcw, Smile, Upload, Eraser } from 'lucide-react';
 import { Kbd, quotaText } from './ui';
 import { backendUrl } from '../backend';
 import { SHORTCUT_ACTIONS, comboFromEvent, resolveBindings, type ShortcutId } from '../shortcuts';
+import { MASCOT_STATES, type MascotSettings, type MascotState } from './Mascot';
+import { removeGifBackground } from '../removeGifBackground';
 
 interface Skill { name: string; description: string; body: string }
 const EMPTY_SKILL: Skill = { name: '', description: '', body: '' };
@@ -45,6 +47,91 @@ interface Section { title: string; icon: typeof Type; items: Item[] }
 
 interface Provider { name: string; apiKey: string; baseUrl: string; model: string }
 const EMPTY_PROVIDER: Provider = { name: '', apiKey: '', baseUrl: '', model: '' };
+const DEFAULT_MASCOT: MascotSettings = { enabled: false, size: '96', pixelated: false, voice: false, phrase: 'All done!', files: {} };
+const MASCOT_LABELS: Record<MascotState, string> = { walk: 'Walk (required)', idle: 'Idle', done: 'Done', error: 'Error' };
+type MascotFile = MascotSettings['files'][MascotState];
+
+// One upload slot. Only real GIFs (GIF87a/GIF89a header) are stored, whatever the extension says;
+// main.cjs checks again before writing userData/mascot/<state>.gif.
+function GifSlot({ state, file, pixelated, onChange }: {
+  state: MascotState; file: MascotFile; pixelated: boolean; onChange: (f: MascotFile) => void;
+}) {
+  const api = (window as any).electronAPI;
+  const [preview, setPreview] = useState<string | null>(null);
+  const [error, setError] = useState('');
+  const [over, setOver] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!file) { setPreview(null); return; }
+    api?.loadMascot?.(state).then(setPreview);
+  }, [state, file?.v]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const upload = async (f?: File) => {
+    if (!f) return;
+    setError('');
+    const bytes = new Uint8Array(await f.arrayBuffer());
+    const magic = String.fromCharCode(...bytes.subarray(0, 6));
+    if (magic !== 'GIF87a' && magic !== 'GIF89a') return setError('Only .gif files are supported.');
+    if (bytes.length > 10 * 1024 * 1024) return setError('GIF is larger than 10 MB.');
+    const res = await api?.saveMascot?.(state, bytes);
+    if (!res?.success) return setError(res?.error || 'Could not save the GIF.');
+    onChange({ name: f.name, size: f.size, v: Date.now() });
+  };
+
+  // Rewrites the stored GIF with its solid background cleared and cropped to the character.
+  const clearBackground = async () => {
+    if (!file || !preview) return;
+    setBusy(true); setError('');
+    try {
+      const bytes = await removeGifBackground(new Uint8Array(await (await fetch(preview)).arrayBuffer()));
+      const res = await api?.saveMascot?.(state, bytes);
+      if (!res?.success) throw new Error(res?.error || 'Could not save the GIF.');
+      onChange({ ...file, size: bytes.length, v: Date.now() });
+    } catch (e: any) {
+      setError(e.message || 'Could not remove the background.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    await api?.saveMascot?.(state, null);
+    setError('');
+    onChange(undefined);
+  };
+
+  return (
+    <div data-testid={`mascot-slot-${state}`}
+      onDragOver={(e) => { e.preventDefault(); setOver(true); }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => { e.preventDefault(); setOver(false); upload(e.dataTransfer.files[0]); }}
+      className={`flex flex-col gap-2 rounded-md border border-dashed p-2.5 bg-background ${over ? 'border-primary/60' : 'border-border-strong'}`}>
+      <div className="flex items-center justify-between">
+        <span className="text-[11.5px] text-muted">{MASCOT_LABELS[state]}</span>
+        {file && <button onClick={remove} title="Remove" aria-label={`Remove ${state} GIF`} className="p-0.5 text-dim hover:text-danger"><Trash2 size={12} /></button>}
+      </div>
+      <button onClick={() => inputRef.current?.click()} className="h-20 flex items-center justify-center rounded border border-border hover:border-primary/40">
+        {preview
+          ? <img src={preview} alt={`${state} animation`} className="max-h-[72px] w-auto" style={{ imageRendering: pixelated ? 'pixelated' : 'auto' }} />
+          : <span className="flex flex-col items-center gap-1 text-[11px] text-dim"><Upload size={14} />Drop a .gif or <span className="text-primary">Browse</span></span>}
+      </button>
+      <input ref={inputRef} type="file" accept=".gif,image/gif" className="hidden" data-testid={`mascot-file-${state}`}
+        onChange={(e) => { upload(e.target.files?.[0]); e.target.value = ''; }} />
+      {file && <span className="text-[10.5px] text-dim font-mono truncate" title={file.name}>{file.name} · {(file.size / 1024).toFixed(0)} KB</span>}
+      {file && (
+        <button onClick={clearBackground} disabled={busy || !preview} data-testid={`mascot-clear-bg-${state}`}
+          title="Make the solid background (e.g. white) transparent and crop to the character"
+          className="flex items-center justify-center gap-1 rounded-md border border-border-strong px-2 py-0.5 text-[11px] text-muted hover:text-fg hover:border-primary/40 disabled:opacity-40">
+          <Eraser size={11} /> {busy ? 'Removing…' : 'Remove background'}
+        </button>
+      )}
+      {error && <span className="text-[11px] text-danger" data-testid={`mascot-error-${state}`}>{error}</span>}
+    </div>
+  );
+}
+
 const mask = (key: string) => (key ? `${'•'.repeat(8)}${key.slice(-4)}` : '(no key)');
 
 export default function SettingsPage({ quota, port }: { quota?: Record<string, any>; port?: number }) {
@@ -68,6 +155,7 @@ export default function SettingsPage({ quota, port }: { quota?: Record<string, a
     keybindings: {} as Record<string, string>,
     autoApproveShell: false,
     mcpServers: {} as Record<string, any>,
+    mascot: DEFAULT_MASCOT,
   });
   const [mcpDraft, setMcpDraft] = useState('');
   const [mcpError, setMcpError] = useState('');
@@ -228,6 +316,9 @@ export default function SettingsPage({ quota, port }: { quota?: Record<string, a
     const { [id]: _, ...rest } = settings.keybindings || {};
     updateSetting('keybindings', rest);
   };
+
+  const mascot = { ...DEFAULT_MASCOT, ...settings.mascot };
+  const setMascot = (patch: Partial<MascotSettings>) => updateSetting('mascot', { ...mascot, ...patch });
 
   const cloud = settings.llmProvider !== 'ollama';
   const sections: Section[] = [
@@ -391,6 +482,34 @@ export default function SettingsPage({ quota, port }: { quota?: Record<string, a
             </div>
           ),
         },
+      ],
+    },
+    {
+      title: 'Companion',
+      icon: Smile,
+      items: [
+        {
+          label: 'Show companion',
+          description: 'A character that roams while the agent works, calls you when it needs approval and celebrates when a run finishes. Click to pet it, drag to move it.',
+          control: <Toggle checked={mascot.enabled} onChange={(v) => setMascot({ enabled: v })} testId="setting-mascot" />,
+        },
+        {
+          label: 'Character GIFs',
+          description: 'Pixel art or anime, any GIF works (max 10 MB). White or solid background? Use Remove background on a slot to cut out just the character. Only Walk is required; the others fall back to it.',
+          wide: true,
+          control: (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full">
+              {MASCOT_STATES.map(s => (
+                <GifSlot key={s} state={s} file={mascot.files[s]} pixelated={mascot.pixelated}
+                  onChange={(f) => { const { [s]: _, ...rest } = mascot.files; setMascot({ files: f ? { ...rest, [s]: f } : rest }); }} />
+              ))}
+            </div>
+          ),
+        },
+        { label: 'Size', description: 'Character height, in pixels.', control: <Dropdown value={mascot.size} options={['48', '64', '96', '128', '160']} onChange={(v) => setMascot({ size: v })} /> },
+        { label: 'Pixel art', description: 'Keep pixel-art GIFs crisp when scaled. Leave off for anime or smooth GIFs.', control: <Toggle checked={mascot.pixelated} onChange={(v) => setMascot({ pixelated: v })} /> },
+        { label: 'Speak when done', description: 'Say the phrase below out loud when a run finishes.', control: <Toggle checked={mascot.voice} onChange={(v) => setMascot({ voice: v })} /> },
+        { label: 'Done phrase', description: 'What the companion says when a run finishes.', control: <input type="text" value={mascot.phrase} onChange={(e) => setMascot({ phrase: e.target.value })} className={`${inputClass} w-56`} /> },
       ],
     },
     {

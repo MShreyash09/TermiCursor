@@ -165,7 +165,35 @@ try {
   await win.getByRole('switch').first().click();
   await shot('s5-model-picker');
 
-  // 8. Companion character: GIF-only uploads, shown when enabled, reacts to run status
+  // 8. Built-in terminal character: ships in public/mascot, shown with no upload, one GIF per state
+  const status = (s) => win.evaluate((s) => window.dispatchEvent(new CustomEvent('agent-status', { detail: s })), s);
+  const mascotSrc = () => win.getByTestId('mascot').locator('img').getAttribute('src');
+  for (const s of ['walk', 'idle', 'done', 'error']) await win.getByTestId(`mascot-default-${s}`).waitFor();
+  check('Settings shows the built-in GIF in every slot', true);
+  await win.getByTestId('setting-mascot').click();
+  check('companion appears with the built-in character', await until(() => win.getByTestId('mascot').isVisible()));
+  const builtIn = await win.evaluate(async () => Promise.all(['walk', 'idle', 'done', 'error'].map(async (s) => {
+    const r = await fetch(`./mascot/${s}.gif`);
+    const b = new Uint8Array(await r.arrayBuffer());
+    const d = new ImageDecoder({ data: b, type: 'image/gif' });
+    await d.tracks.ready;
+    const { image } = await d.decode({ frameIndex: 0 });
+    return `${s}:${r.status}:${String.fromCharCode(...b.slice(0, 6))}:${image.displayWidth}:${d.tracks.selectedTrack.frameCount > 1}`;
+  })));
+  check('all four built-in GIFs load and animate', builtIn.every(x => /:200:GIF89a:160:true$/.test(x)), builtIn.join(' '));
+  check('idle uses the built-in idle GIF', (await mascotSrc()).endsWith('mascot/idle.gif'));
+  await status('running');
+  check('running uses the built-in walk GIF', await until(async () => (await mascotSrc()).endsWith('mascot/walk.gif')));
+  await status('done');
+  check('done uses the built-in done GIF', await until(async () => (await mascotSrc()).endsWith('mascot/done.gif')));
+  await shot('s6a-builtin-done');
+  await status('running');
+  await status('error');
+  check('error uses the built-in error GIF', await until(async () => (await mascotSrc()).endsWith('mascot/error.gif')));
+  await shot('s6b-builtin-error');
+  await until(async () => (await win.getByTestId('mascot-bubble').count()) === 0, 6000);   // reaction ends, back to idle
+
+  // Companion uploads: GIF-only, a custom Walk replaces the built-in set, reacts to run status
   const GIF = 'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
   const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
   const walkInput = win.getByTestId('mascot-file-walk');
@@ -176,9 +204,7 @@ try {
   check('a GIF upload is stored on disk', fs.existsSync(path.join(userData, 'mascot', 'walk.gif')));
   const ipcReject = await win.evaluate((b) => window.electronAPI.saveMascot('idle', Uint8Array.from(atob(b), c => c.charCodeAt(0))), PNG);
   check('main process rejects non-GIF bytes', ipcReject.success === false, JSON.stringify(ipcReject));
-  await win.getByTestId('setting-mascot').click();
-  check('companion appears when enabled', await until(() => win.getByTestId('mascot').isVisible()));
-  const status = (s) => win.evaluate((s) => window.dispatchEvent(new CustomEvent('agent-status', { detail: s })), s);
+  check('a custom Walk replaces the built-in character', await until(async () => (await mascotSrc()).startsWith('data:image/gif')));
   await status('done');   // straight from idle, like opening a past chat: no reaction
   await win.waitForTimeout(300);
   check('no celebration without a run', await win.getByTestId('mascot-bubble').count() === 0);

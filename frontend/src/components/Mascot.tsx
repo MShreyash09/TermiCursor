@@ -7,6 +7,10 @@ import type { AgentEvent } from '../types/agent';
 
 export const MASCOT_STATES = ['walk', 'idle', 'done', 'error'] as const;
 export type MascotState = typeof MASCOT_STATES[number];
+// Built-in terminal character (public/mascot, drawn by scripts/make-mascot.mjs), used until the user uploads a Walk GIF.
+export const DEFAULT_GIFS: Record<MascotState, string> = {
+  walk: './mascot/walk.gif', idle: './mascot/idle.gif', done: './mascot/done.gif', error: './mascot/error.gif',
+};
 export interface MascotSettings {
   enabled: boolean; size: string; pixelated: boolean; voice: boolean; phrase: string;
   files: Partial<Record<MascotState, { name: string; size: number; v: number }>>;
@@ -133,13 +137,14 @@ export default function Mascot() {
     return () => window.clearTimeout(t);
   }, [mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!cfg?.enabled || !srcs.walk) return null;
+  if (!cfg?.enabled) return null;
 
   const at = pos ?? homeSpot();
   const x = Math.max(0, Math.min(at.x, window.innerWidth - size));
   const y = Math.max(0, Math.min(at.y, window.innerHeight - size));
-  const src = (mode === 'done' && srcs.done) || (mode === 'error' && srcs.error)
-    || ((mode === 'idle' || mode === 'sleep') && srcs.idle) || srcs.walk;
+  // A custom character's missing states fall back to its own Walk GIF, never to the built-in one.
+  const gif = (s: MascotState) => srcs[s] || srcs.walk || DEFAULT_GIFS[s];
+  const src = gif(mode === 'done' ? 'done' : mode === 'error' ? 'error' : mode === 'idle' || mode === 'sleep' ? 'idle' : 'walk');
 
   const onPointerDown = (e: React.PointerEvent) => {
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -182,7 +187,7 @@ export default function Mascot() {
         <div key={anim.key} className={`${anim.name} ${mode === 'sleep' ? 'mascot-sleep' : ''}`}>
           <img src={src} alt="" draggable={false} style={{
             height: size, width: 'auto', transform: `scaleX(${facing})`,
-            imageRendering: cfg.pixelated ? 'pixelated' : 'auto',
+            imageRendering: cfg.pixelated || !srcs.walk ? 'pixelated' : 'auto',
           }} />
         </div>
       </div>

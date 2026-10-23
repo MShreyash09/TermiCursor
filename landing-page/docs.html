@@ -58,8 +58,13 @@
       <p class="docs-group">Configure</p>
       <a href="#models">Models &amp; providers</a>
       <a href="#pick-model">Pick a model</a>
+      <a href="#skills-mcp">Skills &amp; MCP</a>
+      <a href="#shortcuts">Keyboard shortcuts</a>
       <a href="#settings">Settings file</a>
       <a href="#data">Where data lives</a>
+      <p class="docs-group">Personalize</p>
+      <a href="#companion">Companion character</a>
+      <a href="#music">Music player</a>
       <p class="docs-group">Help</p>
       <a href="#troubleshooting">Troubleshooting</a>
     </aside>
@@ -177,10 +182,13 @@ termicursor</code></pre>
           the next request, no restart needed.</p>
         <ul>
           <li><b>Ollama</b> (default): any model you've pulled. Everything stays local.</li>
-          <li><b>Groq</b>: faster cloud inference. Needs an API key.</li>
-          <li><b>Custom</b>: any OpenAI-compatible API (name, base URL, key, model).</li>
+          <li><b>API providers</b>: any OpenAI-compatible API. In <b>Settings → API providers</b> pick a preset (Groq,
+            Gemini, OpenAI, Anthropic, OpenRouter) or enter a name, base URL, model and key, then choose it as the
+            provider. Use the pencil to edit one and the eye to check a saved key.</li>
         </ul>
-        <p class="note warn">With Groq or a custom provider, your prompts and the code the agent reads are sent to
+        <p>The picker next to the chat input switches between your Ollama models and API providers without opening
+          Settings.</p>
+        <p class="note warn">With an API provider, your prompts and the code the agent reads are sent to
           that provider.</p>
       </section>
 
@@ -248,6 +256,41 @@ termicursor</code></pre>
         </ol>
       </section>
 
+      <section id="skills-mcp">
+        <h2>Skills &amp; MCP servers</h2>
+        <p><b>Skills</b> are instruction packs the agent loads when a task fits, such as your API conventions or test
+          style. Create them in <b>Settings → Skills &amp; MCP</b>, or as a <code>SKILL.md</code> file:</p>
+        <pre><code>&lt;project&gt;/.termicursor/skills/&lt;name&gt;/SKILL.md   (this project only)
+&lt;data folder&gt;/skills/&lt;name&gt;/SKILL.md             (all projects)</code></pre>
+        <p>Put standing instructions in <code>AGENTS.md</code> or <code>.termicursor/rules.md</code> and they are read
+          at the start of every run. Type <code>@</code> in the chat input to attach a project file.</p>
+        <p><b>MCP servers</b> (GitHub, Slack, databases, docs…) use the same format as Claude Desktop's
+          <code>mcpServers</code>. Each has a <code>command</code> (runs locally) or a <code>url</code>. The agent asks
+          before running any MCP tool.</p>
+        <p class="note">Multi-step skill and MCP work needs a model of about 14B parameters or more. Set
+          <code>OLLAMA_NUM_CTX</code> to 16384-32768 when you use MCP.</p>
+      </section>
+
+      <section id="shortcuts">
+        <h2>Keyboard shortcuts</h2>
+        <p>Click a shortcut in <b>Settings → Keyboard shortcuts</b>, then press the new keys. A combination needs
+          Ctrl or Alt (or an F-key), and one already in use is rejected. Press <kbd>Ctrl</kbd>+<kbd>/</kbd> anywhere
+          to see them all.</p>
+        <table>
+          <thead><tr><th>Action</th><th>Default</th></tr></thead>
+          <tbody>
+            <tr><td>Toggle the agent panel</td><td><kbd>Ctrl</kbd>+<kbd>L</kbd></td></tr>
+            <tr><td>Toggle the explorer</td><td><kbd>Ctrl</kbd>+<kbd>B</kbd></td></tr>
+            <tr><td>Toggle the terminal</td><td><kbd>Ctrl</kbd>+<kbd>`</kbd></td></tr>
+            <tr><td>Command palette</td><td><kbd>Ctrl</kbd>+<kbd>P</kbd></td></tr>
+            <tr><td>Settings</td><td><kbd>Ctrl</kbd>+<kbd>,</kbd></td></tr>
+            <tr><td>Back to the explorer</td><td><kbd>Ctrl</kbd>+<kbd>E</kbd></td></tr>
+            <tr><td>Shortcut overview</td><td><kbd>Ctrl</kbd>+<kbd>/</kbd></td></tr>
+            <tr><td>Save file</td><td><kbd>Ctrl</kbd>+<kbd>S</kbd></td></tr>
+          </tbody>
+        </table>
+      </section>
+
       <section id="settings">
         <h2>Settings file</h2>
         <p>The Settings page writes <code>settings.json</code> in the data folder (see below). You can also edit it
@@ -256,12 +299,14 @@ termicursor</code></pre>
   "llmProvider": "ollama",
   "ollamaModel": "qwen2.5-coder:3b",
   "ollamaUrl": "http://localhost:11434",
-  "groqApiKey": "",
-  "groqModel": "llama-3.1-8b-instant",
+  "customProviders": [
+    { "name": "Groq", "baseUrl": "https://api.groq.com/openai/v1", "model": "llama-3.1-8b-instant", "apiKey": "" }
+  ],
   "autoApproveShell": false
 }</code></pre>
-        <p>Environment variables <code>LLM_PROVIDER</code>, <code>OLLAMA_URL</code>, <code>OLLAMA_LLM_MODEL</code>,
-          <code>GROQ_API_KEY</code> and <code>GROQ_MODEL</code> are used when a setting is empty.</p>
+        <p><code>llmProvider</code> is <code>ollama</code> or the name of an entry in <code>customProviders</code>.
+          Environment variables <code>LLM_PROVIDER</code>, <code>OLLAMA_URL</code> and <code>OLLAMA_LLM_MODEL</code>
+          are used when a setting is empty.</p>
       </section>
 
       <section id="data">
@@ -272,8 +317,45 @@ termicursor</code></pre>
           <li><code>settings.json</code>: your settings</li>
           <li><code>local_qdrant\</code>: the search index, one collection per project</li>
           <li><code>artifacts\</code>: command logs and browser recordings</li>
+          <li><code>mascot\</code>: your companion GIFs (desktop app)</li>
         </ul>
+        <p>Your music files are never copied. The music bar plays them from where they already are.</p>
         <p>Desktop app logs: <code>%APPDATA%\Termicursor\logs\main.log</code>.</p>
+      </section>
+
+      <section id="companion">
+        <h2>Companion character</h2>
+        <p>A small animated character that lives in the app. While the agent works it wanders around the window and
+          shows what it is doing (<em>read_file App.tsx…</em>). When the agent needs your approval or plan review it
+          runs over to the chat and calls you. When a run finishes it celebrates, and can say a phrase out loud. If
+          a run fails or you stop it, it reacts to that too. Click it to pet it, drag it to move it, and leave it alone
+          for a few minutes and it falls asleep. With reduced motion on in Windows, it stays put and only shows
+          bubbles.</p>
+        <p>Turn it on in <b>Settings → Companion</b>. It starts with a built-in terminal character. To use your own,
+          drop a <b>.gif</b> on a slot: <b>Walk</b>, <b>Idle</b>, <b>Done</b> or <b>Error</b>. Pixel art and anime both
+          work. Empty slots reuse your Walk GIF.</p>
+        <ul>
+          <li>Only real GIFs are accepted (checked by the file's contents, not its name), up to 10 MB each.</li>
+          <li><b>Remove background</b> turns a solid background, such as white, transparent and crops to the character.
+            Colors enclosed by the character, like an eye, are kept. It works on plain backgrounds only.</li>
+          <li><b>Size</b>, <b>Pixel art</b> (keeps pixel GIFs crisp) and <b>Speak when done</b> with your own phrase.</li>
+        </ul>
+      </section>
+
+      <section id="music">
+        <h2>Music player</h2>
+        <p>Play songs from your PC while you code. Turn on <b>Settings → Music → Show music bar</b> and choose a
+          folder. The bar appears above the status bar and plays MP3, M4A, AAC, WAV, OGG, OPUS and FLAC files,
+          including those in subfolders.</p>
+        <ul>
+          <li>Shows the cover art, title and artist from each file's tags, or the file name if it has none.</li>
+          <li>Play and pause, previous and next, seek, volume and mute, shuffle, repeat (off, all, one) and a
+            queue list. Your keyboard's media keys work too, and Windows shows the song in its media overlay.</li>
+          <li>It remembers the last track, volume, shuffle and repeat.</li>
+          <li>The default colors match the TermiCursor theme. Change the <b>accent color</b> (six presets or any color)
+            and the <b>bar background</b>, and use <b>Theme colors</b> to reset them.</li>
+        </ul>
+        <p class="note">Files stay on your PC and are only read when played. Streaming services are not supported yet.</p>
       </section>
 
       <section id="troubleshooting">
@@ -287,6 +369,11 @@ termicursor</code></pre>
         <h3>Answers are slow or low quality</h3>
         <p>The default 3B model is chosen to run on most PCs. If you have the RAM/GPU, pull a bigger coder model and
           select it in Settings, or switch to Groq.</p>
+        <h3>The music bar says "No audio files"</h3>
+        <p>Check that the folder holds supported formats (MP3, M4A, AAC, WAV, OGG, OPUS, FLAC) and choose it again
+          with the folder button on the bar.</p>
+        <h3>My companion has a white box around it</h3>
+        <p>The GIF has a solid background. Click <b>Remove background</b> on its slot in Settings → Companion.</p>
         <h3>Something else</h3>
         <p><a href="https://github.com/MShreyash09/TermiCursor/issues" target="_blank" rel="noopener">Open an
             issue</a> and attach <code>main.log</code>. Security problems: see

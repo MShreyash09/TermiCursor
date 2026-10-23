@@ -391,8 +391,17 @@ export default function App() {
               </Card>
               <Card title="Your models"
                 icon={<Icon color="white"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" /><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5" /></Icon>}>
-                <p>Any Ollama model, switchable in Settings. Groq is there if you want cloud speed, and it's off
-                  unless you turn it on.</p>
+                <p>Any Ollama model, switchable in Settings. Add Groq, Gemini, OpenAI or any compatible API if you want
+                  cloud speed. They're off unless you turn them on.</p>
+              </Card>
+              <Card title="A companion that tells you when it's done"
+                icon={<Icon color="green"><circle cx="12" cy="12" r="9" /><path d="M8.5 14.5s1.3 2 3.5 2 3.5-2 3.5-2" /><path d="M9 9.5h.01M15 9.5h.01" /></Icon>}>
+                <p>A little character roams while the agent works, calls you when it needs approval and celebrates when
+                  it's finished. Use the built-in one or drop in your own GIF.</p>
+              </Card>
+              <Card title="Music while you code"
+                icon={<Icon color="purple"><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></Icon>}>
+                <p>A player for the songs on your PC, with cover art, media keys and your own colors.</p>
               </Card>
             </div>
           </div>

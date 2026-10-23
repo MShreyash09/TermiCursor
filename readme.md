@@ -107,7 +107,7 @@ flowchart TB
 
 | Part | Where | What it does |
 |---|---|---|
-| Desktop app | `frontend/` (Electron, React, Vite, Tailwind) | Editor (Monaco), file tree, terminal (xterm.js), agent panel. The main process starts the packaged backend with a per-launch token and guards navigation. |
+| Desktop app | `frontend/` (Electron, React, Vite, Tailwind) | Editor (Monaco), file tree, terminal (xterm.js), agent panel, companion character (`Mascot.tsx`) and music bar (`MusicBar.tsx`). The main process starts the packaged backend with a per-launch token and guards navigation. |
 | Terminal app | `cli.py` (`termicursor`), `main.py` (headless) | Same agent, in the terminal. `tab` cycles Ask / Plan / Build. |
 | Backend | `server.py` (FastAPI) | Sessions, plan review, approvals, artifacts, model downloads; streams agent events over `WS /ws/agent/{session_id}`. |
 | Agent | `core/agent/` | `loop.py` runs requests; `router.py` (simple vs multi-step), `planner.py`, `context.py` (grounding), `prompts.py`, `json_protocol.py`, `llm_client.py` (Ollama or OpenAI-compatible). |
@@ -245,6 +245,9 @@ when you use MCP. Multi-step skill/MCP work needs a model of about 14B parameter
 *   **Private by Default:** With Ollama, code, embeddings and inference stay on your machine (see *What goes over the network* above).
 *   **Syntax-Aware Parsing:** Code-aware chunking ensures logical components (functions, classes) are kept intact.
 *   **Database Workspace Isolation:** Every project folder receives a unique path-hashed Qdrant collection to completely avoid data mix-ups.
+*   **Companion Character:** A small animated character that roams while the agent works, calls you when it needs approval and celebrates when a run finishes (optionally speaking a phrase). A built-in terminal character is included; Settings → Companion lets you drop in your own `.gif` for walk, idle, done and error (any art style, max 10 MB each, GIF contents are verified) and **Remove background** cuts a solid background out of a GIF. Click to pet it, drag to move it.
+*   **Music Bar:** Plays the songs in a folder on your PC (MP3, M4A, AAC, WAV, OGG, OPUS, FLAC) from a bar above the status bar, with cover art and title from the file's tags, play/pause, next/previous, seek, volume, shuffle, repeat, a queue and keyboard media keys. The default colors match the app theme; the accent and background are customizable in Settings → Music.
+*   **Your Own Models and Shortcuts:** Switch between Ollama models and OpenAI-compatible API providers from the chat, and rebind keyboard shortcuts in Settings.
 *   **Inline Completions:** Tab-to-accept ghost-text suggestions in the editor from a small local Ollama model (default `qwen2.5-coder:1.5b`; Ollama provider only, toggle in Settings).
 *   **Proactive Checks:** Validates model availability and connectivity to prevent standard connection tracebacks.
 *   **Windows Terminal Safe:** Integrated UTF-8 reconfiguration protects against command-line character rendering crashes.
@@ -298,7 +301,28 @@ python tests/live_agent_eval.py            # 11 tasks x 2 reps, prints a pass ta
 
 # End-to-end GUI test: drives the real Electron app (own backend + Vite on free ports)
 cd frontend && node e2e/run-e2e.mjs        # screenshots in frontend/e2e/screenshots
+node e2e/settings-e2e.mjs                  # providers, shortcuts, companion character, GIF background removal
+node e2e/music-e2e.mjs                     # music bar; set E2E_MUSIC_DIR=<folder> to also play your own songs
+# (set E2E_PYTHON to the venv's python.exe if `python` on your PATH can't start the backend)
+
+# Rebuild the built-in companion GIFs (frontend/public/mascot) after editing the drawing script
+node scripts/make-mascot.mjs
 ```
+
+### Security checks
+Dependencies are audited on every push (the `audit` job in `.github/workflows/ci.yml` fails on high or
+critical npm findings and on any `pip-audit` finding), and Dependabot opens grouped weekly update PRs.
+Run the same checks before pushing:
+
+```powershell
+cd frontend; npm audit; cd ..\landing-page; npm audit; cd ..
+python -m pip_audit -r requirements.txt
+```
+
+Fix a vulnerable package by bumping it. For a transitive one, add an `overrides` entry to `package.json`
+instead of `npm audit fix --force`. In the desktop app, the renderer is untrusted: the main process
+validates everything it is asked to read or write (for example it re-checks that companion uploads are GIFs
+and that music files have an audio extension).
 
 In dev, the backend runs without the per-launch token (only the packaged app sets
 `TERMICURSOR_TOKEN`); it still rejects requests from any origin except the Vite dev server.

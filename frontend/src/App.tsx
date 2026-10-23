@@ -12,6 +12,7 @@ import StatusBar from './components/StatusBar';
 import CommandPalette from './components/CommandPalette';
 import TerminalPanel from './components/TerminalPanel';
 import Mascot from './components/Mascot';
+import MusicBar from './components/MusicBar';
 import { Kbd } from './components/ui';
 import { backendUrl, setBackendToken } from './backend';
 import { SHORTCUT_ACTIONS, findAction, useKeybindings, type ShortcutId } from './shortcuts';
@@ -483,6 +484,7 @@ function App() {
         </PanelGroup>
       </div>
 
+      <MusicBar />
       <StatusBar
         backendStatus={backendStatus}
         pullProgress={pullProgress}

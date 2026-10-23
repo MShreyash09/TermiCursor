@@ -87,6 +87,14 @@
 .tc-markdown strong { color: #fff; }
 .tc-markdown h1, .tc-markdown h2, .tc-markdown h3 { font-size: 13px; font-weight: 600; margin: 0.6em 0 0.3em; color: #fff; }
 
+/* Music bar sliders: thin track filled up to --p in the bar's accent, thumb shows on hover */
+.tc-range { -webkit-appearance: none; appearance: none; height: 4px; border-radius: 9999px; cursor: pointer; outline: none;
+  background: linear-gradient(to right, var(--music-accent) var(--p, 0%), var(--color-border-strong) var(--p, 0%)); }
+.tc-range:disabled { cursor: default; opacity: 0.5; }
+.tc-range::-webkit-slider-thumb { -webkit-appearance: none; width: 11px; height: 11px; border-radius: 9999px; background: #fff;
+  opacity: 0; transition: opacity 0.15s; box-shadow: 0 0 0 3px color-mix(in srgb, var(--music-accent) 35%, transparent); }
+.tc-range:hover::-webkit-slider-thumb, .tc-range:focus-visible::-webkit-slider-thumb { opacity: 1; }
+
 /* Companion character (Mascot.tsx) */
 @keyframes mascot-hop { 0%, 100% { transform: translateY(0); } 40% { transform: translateY(-22px); } }
 @keyframes mascot-shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-6px) rotate(-4deg); } 75% { transform: translateX(6px) rotate(4deg); } }

@@ -297,6 +297,14 @@ function createWindow() {
     }
   });
 
+  // Music bar: the renderer can't load file:// audio from its http origin, so it gets the bytes
+  // and plays them from a blob URL (which also makes seeking reliable). Audio files only.
+  const AUDIO_EXT = /\.(mp3|m4a|aac|wav|ogg|oga|opus|flac|webm)$/i;
+  ipcMain.handle('music:read', async (event, filePath) => {
+    if (typeof filePath !== 'string' || !AUDIO_EXT.test(filePath)) return null;
+    try { return await fs.readFile(filePath); } catch { return null; }
+  });
+
   ipcMain.handle('dialog:deleteFile', async (event, filePath) => {
     try {
       await fs.unlink(filePath);

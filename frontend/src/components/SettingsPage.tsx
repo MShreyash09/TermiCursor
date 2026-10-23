@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react';
-import { Type, Terminal, Cpu, Keyboard, Trash2, Plus, Search, Check, ShieldCheck, Plug, Eye, EyeOff, Pencil, RotateCcw, Smile, Upload, Eraser } from 'lucide-react';
+import { Type, Terminal, Cpu, Keyboard, Trash2, Plus, Search, Check, ShieldCheck, Plug, Eye, EyeOff, Pencil, RotateCcw, Smile, Upload, Eraser, Music, FolderOpen } from 'lucide-react';
 import { Kbd, quotaText } from './ui';
 import { backendUrl } from '../backend';
 import { SHORTCUT_ACTIONS, comboFromEvent, resolveBindings, type ShortcutId } from '../shortcuts';
 import { MASCOT_STATES, DEFAULT_GIFS, type MascotSettings, type MascotState } from './Mascot';
 import { removeGifBackground } from '../removeGifBackground';
+import { DEFAULT_MUSIC, MUSIC_PRESETS, type MusicSettings } from './MusicBar';
 
 interface Skill { name: string; description: string; body: string }
 const EMPTY_SKILL: Skill = { name: '', description: '', body: '' };
@@ -158,6 +159,7 @@ export default function SettingsPage({ quota, port }: { quota?: Record<string, a
     autoApproveShell: false,
     mcpServers: {} as Record<string, any>,
     mascot: DEFAULT_MASCOT,
+    music: DEFAULT_MUSIC,
   });
   const [mcpDraft, setMcpDraft] = useState('');
   const [mcpError, setMcpError] = useState('');
@@ -321,6 +323,13 @@ export default function SettingsPage({ quota, port }: { quota?: Record<string, a
 
   const mascot = { ...DEFAULT_MASCOT, ...settings.mascot };
   const setMascot = (patch: Partial<MascotSettings>) => updateSetting('mascot', { ...mascot, ...patch });
+
+  const music = { ...DEFAULT_MUSIC, ...settings.music };
+  const setMusic = (patch: Partial<MusicSettings>) => updateSetting('music', { ...music, ...patch });
+  const chooseMusicFolder = async () => {
+    const folder = await (window as any).electronAPI?.openFolder?.();
+    if (folder) setMusic({ folder });
+  };
 
   const cloud = settings.llmProvider !== 'ollama';
   const sections: Section[] = [
@@ -513,6 +522,59 @@ export default function SettingsPage({ quota, port }: { quota?: Record<string, a
         { label: 'Pixel art', description: 'Keep pixel-art GIFs crisp when scaled. Leave off for anime or smooth GIFs.', control: <Toggle checked={mascot.pixelated} onChange={(v) => setMascot({ pixelated: v })} /> },
         { label: 'Speak when done', description: 'Say the phrase below out loud when a run finishes.', control: <Toggle checked={mascot.voice} onChange={(v) => setMascot({ voice: v })} /> },
         { label: 'Done phrase', description: 'What the companion says when a run finishes.', control: <input type="text" value={mascot.phrase} onChange={(e) => setMascot({ phrase: e.target.value })} className={`${inputClass} w-56`} /> },
+      ],
+    },
+    {
+      title: 'Music',
+      icon: Music,
+      items: [
+        {
+          label: 'Show music bar',
+          description: 'A player above the status bar for songs on this PC: cover art, title, play/pause, next/previous, seek, shuffle, repeat and volume. Media keys work too.',
+          control: <Toggle checked={music.enabled} onChange={(v) => setMusic({ enabled: v })} testId="setting-music" />,
+        },
+        {
+          label: 'Music folder',
+          description: 'Plays MP3, M4A, AAC, WAV, OGG, OPUS and FLAC files in this folder and its subfolders.',
+          control: (
+            <div className="flex items-center gap-2">
+              <span className="max-w-[220px] truncate font-mono text-[11.5px] text-dim" title={music.folder} data-testid="music-folder">{music.folder || 'None chosen'}</span>
+              <button onClick={chooseMusicFolder} className="flex items-center gap-1 rounded-md border border-primary/40 px-2.5 py-1 text-[12px] text-primary hover:bg-primary/10">
+                <FolderOpen size={12} /> Choose
+              </button>
+              {music.folder && <button onClick={() => setMusic({ folder: '' })} title="Clear" aria-label="Clear music folder" className="p-1 text-dim hover:text-danger"><Trash2 size={13} /></button>}
+            </div>
+          ),
+        },
+        {
+          label: 'Accent color',
+          description: 'Play button, progress and active controls. TermiCursor green matches the app theme.',
+          control: (
+            <div className="flex items-center gap-1.5" data-testid="music-accent">
+              {MUSIC_PRESETS.map(p => (
+                <button key={p.name} onClick={() => setMusic({ accent: p.accent })} title={p.name} aria-label={`${p.name} accent`}
+                  className={`w-5 h-5 rounded-full border-2 ${music.accent.toLowerCase() === p.accent ? 'border-fg' : 'border-transparent'}`}
+                  style={{ background: p.accent }} />
+              ))}
+              <input type="color" value={music.accent} onChange={(e) => setMusic({ accent: e.target.value })} title="Custom color" aria-label="Custom accent color"
+                className="w-7 h-6 cursor-pointer rounded border border-border-strong bg-transparent" />
+            </div>
+          ),
+        },
+        {
+          label: 'Bar background',
+          description: 'Background of the music bar.',
+          control: (
+            <div className="flex items-center gap-2">
+              <input type="color" value={music.background} onChange={(e) => setMusic({ background: e.target.value })} aria-label="Bar background color" data-testid="music-bg"
+                className="w-7 h-6 cursor-pointer rounded border border-border-strong bg-transparent" />
+              {(music.background !== DEFAULT_MUSIC.background || music.accent !== DEFAULT_MUSIC.accent) && (
+                <button onClick={() => setMusic({ accent: DEFAULT_MUSIC.accent, background: DEFAULT_MUSIC.background })} title="Reset colors to the TermiCursor theme"
+                  className="flex items-center gap-1 rounded-md border border-border-strong px-2 py-0.5 text-[11.5px] text-muted hover:text-fg"><RotateCcw size={11} /> Theme colors</button>
+              )}
+            </div>
+          ),
+        },
       ],
     },
     {

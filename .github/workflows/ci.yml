@@ -64,3 +64,24 @@ jobs:
         run: |
           npm ci
           npx tsc --noEmit -p .
+
+  # Fails the build on known vulnerabilities in dependencies (high and critical for npm, any for pip).
+  # Fix by bumping the package, or an "overrides" entry in package.json for a transitive one.
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: npm audit (frontend + landing page)
+        run: |
+          (cd frontend && npm ci --ignore-scripts && npm audit --audit-level=high)
+          (cd landing-page && npm ci --ignore-scripts && npm audit --audit-level=high)
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: pip-audit
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt

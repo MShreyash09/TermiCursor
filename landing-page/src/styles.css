@@ -455,6 +455,9 @@ kbd {
 .docs-body td { color: var(--muted); }
 .docs-body .note { margin-top: 16px; padding: 12px 16px; border-left: 3px solid var(--green); background: var(--bg-1); border-radius: 0 8px 8px 0; }
 .docs-body .note.warn { border-left-color: var(--orange); }
+.docs-body .shot { margin-top: 20px; }
+.docs-body .shot img { width: 100%; height: auto; }
+.docs-body .shot figcaption { display: block; margin-top: 10px; color: var(--dim); font: 500 13px/1.4 var(--mono); text-align: center; }
 .c-ask { color: var(--green) !important; }
 .c-plan { color: var(--purple) !important; }
 .c-build { color: var(--blue) !important; }

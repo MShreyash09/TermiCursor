@@ -8,6 +8,9 @@ The page (`../../src/App.jsx`) loads these files. If a file is missing, its fram
 | `cli-welcome.png` | Hero | Real capture of the terminal app's welcome screen |
 | `cli-plan.png` | "Plan mode" section | Real plan from the Plan agent |
 | `cli-ask.png` | "Ask mode" section | Real Ask-mode run |
+| `character.png` | Docs, "Companion character" | Companion over the desktop app |
+| `character_setting.png` | Docs, "Companion character" | Settings → Companion |
+| `music_settings.png` | Docs, "Music player" | Settings → Music |
 | `app.png` | "Desktop app" section | **Older build of the app, replace with a current screenshot** (16:10, at least 1600 px wide) |
 
 The `cli-*.png` images were made by running the real CLI and exporting its output

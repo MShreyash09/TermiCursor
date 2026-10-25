@@ -35,7 +35,8 @@ jobs:
             echo "[skip-test-check] found in a commit message; skipping."; exit 0
           fi
           changed=$(git diff --name-only "$base...HEAD")
-          src=$(echo "$changed" | grep -E '^(core/.*|server|main|cli|rag)\.py$' || true)
+          # core/__init__.py only holds the version; a release bump is covered by tests/test_version.py.
+          src=$(echo "$changed" | grep -E '^(core/.*|server|main|cli|rag)\.py$' | grep -v '^core/__init__\.py$' || true)
           tests=$(echo "$changed" | grep -E '^tests/test_.*\.py$' || true)
           if [ -n "$src" ] && [ -z "$tests" ]; then
             echo "::error::Backend code changed but no tests/test_*.py was added or updated:"
